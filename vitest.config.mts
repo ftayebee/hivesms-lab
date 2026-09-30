@@ -32,7 +32,7 @@ export default defineConfig({
           name: "integration",
           include: ["tests/integration/**/*.test.ts"],
           environment: "node",
-          // One real PostgreSQL test database; files run sequentially and reset it.
+          // One real MySQL/MariaDB test database; files run sequentially and reset it.
           fileParallelism: false,
           testTimeout: 60_000,
           hookTimeout: 120_000,

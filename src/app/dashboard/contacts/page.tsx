@@ -8,6 +8,7 @@ import { EmptyState, PageHeader, PermissionDenied } from "@/components/shared/st
 import { tenantWithPermission } from "@/lib/auth/session";
 import { can } from "@/lib/auth/context";
 import { formatNumber } from "@/lib/format";
+import { jsonStringArray } from "@/lib/utils";
 import { contactListQuery } from "@/features/contacts/schemas";
 import { allTags, CONTACTS_PAGE_SIZE, listContacts, listGroups } from "@/features/contacts/service";
 import { ContactDialog } from "@/features/contacts/components/contact-dialog";
@@ -137,7 +138,7 @@ export default async function ContactsPage({ searchParams }: PageProps<"/dashboa
                 phone: r.phone,
                 email: r.email,
                 company: r.company,
-                tags: r.tags,
+                tags: jsonStringArray(r.tags),
                 groupIds: r.groups.map((g) => g.group.id),
                 groupNames: r.groups.map((g) => g.group.name),
                 consentStatus: r.consentStatus,

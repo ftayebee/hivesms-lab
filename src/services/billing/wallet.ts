@@ -24,18 +24,24 @@ export async function ensureWallet(organizationId: string, tx: Tx | typeof db = 
   return tx.wallet.upsert({ where: { organizationId }, create: { organizationId }, update: {} });
 }
 
+/** Balance right after our UPDATE; the row stays locked by it until the transaction ends. */
+function readWalletRow(tx: Tx, organizationId: string) {
+  return tx.$queryRaw<{ id: string; balance: string }[]>`
+    SELECT id, CAST(balance AS CHAR) AS balance FROM wallets WHERE organizationId = ${organizationId}`;
+}
+
 export async function debitWallet(tx: Tx, entry: LedgerEntry) {
   const amount = new Decimal(entry.amount.toString());
   if (amount.lte(0)) throw new Error("Debit amount must be positive");
-  const rows = await tx.$queryRaw<{ id: string; balance: string }[]>`
-    UPDATE wallets SET balance = balance - ${amount.toString()}::numeric, "updatedAt" = now()
-    WHERE "organizationId" = ${entry.organizationId}::uuid AND balance >= ${amount.toString()}::numeric
-    RETURNING id, balance::text`;
-  if (!rows.length) {
+  const changed = await tx.$executeRaw`
+    UPDATE wallets SET balance = balance - CAST(${amount.toString()} AS DECIMAL(14,4)), updatedAt = ${new Date()}
+    WHERE organizationId = ${entry.organizationId} AND balance >= CAST(${amount.toString()} AS DECIMAL(14,4))`;
+  if (!changed) {
     throw new AppError("INSUFFICIENT_BALANCE", "Insufficient balance. Add balance to your wallet and try again.", {
       required: amount.toFixed(2),
     });
   }
+  const rows = await readWalletRow(tx, entry.organizationId);
   return tx.walletTransaction.create({
     data: {
       walletId: rows[0].id,
@@ -56,11 +62,13 @@ export async function creditWallet(tx: Tx, entry: LedgerEntry) {
   const amount = new Decimal(entry.amount.toString());
   if (amount.lte(0)) throw new Error("Credit amount must be positive");
   await ensureWallet(entry.organizationId, tx);
-  const rows = await tx.$queryRaw<{ id: string; balance: string }[]>`
-    UPDATE wallets SET balance = balance + ${amount.toString()}::numeric, "updatedAt" = now(),
-      "lowBalanceNotifiedAt" = CASE WHEN balance + ${amount.toString()}::numeric > "lowBalanceThreshold" THEN NULL ELSE "lowBalanceNotifiedAt" END
-    WHERE "organizationId" = ${entry.organizationId}::uuid
-    RETURNING id, balance::text`;
+  // MySQL applies SET assignments left to right, so the flag is computed before balance changes.
+  await tx.$executeRaw`
+    UPDATE wallets SET
+      lowBalanceNotifiedAt = CASE WHEN balance + CAST(${amount.toString()} AS DECIMAL(14,4)) > lowBalanceThreshold THEN NULL ELSE lowBalanceNotifiedAt END,
+      balance = balance + CAST(${amount.toString()} AS DECIMAL(14,4)), updatedAt = ${new Date()}
+    WHERE organizationId = ${entry.organizationId}`;
+  const rows = await readWalletRow(tx, entry.organizationId);
   return tx.walletTransaction.create({
     data: {
       walletId: rows[0].id,

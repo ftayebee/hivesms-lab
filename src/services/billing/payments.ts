@@ -7,6 +7,7 @@ import { formatBDT } from "@/lib/format";
 import { logger } from "@/lib/logger";
 import { getBillingPolicy } from "@/services/settings";
 import { creditWallet } from "@/services/billing/wallet";
+import { nextCounterValue } from "@/services/billing/counters";
 import { notify } from "@/services/notify";
 import { emailTemplates } from "@/services/email/templates";
 
@@ -16,8 +17,7 @@ import { emailTemplates } from "@/services/email/templates";
  * constraint would reject a second top-up for the same payment anyway.
  */
 async function nextInvoiceNumber(tx: Tx, prefix: string) {
-  const rows = await tx.$queryRaw<{ n: bigint }[]>`SELECT nextval('invoice_number_seq') AS n`;
-  return `${prefix}-${new Date().getUTCFullYear()}-${String(rows[0].n).padStart(6, "0")}`;
+  return `${prefix}-${new Date().getUTCFullYear()}-${String(await nextCounterValue(tx, "invoice_number")).padStart(6, "0")}`;
 }
 
 export async function completePayment(

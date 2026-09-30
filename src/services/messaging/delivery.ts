@@ -1,6 +1,6 @@
 import type { MessageEventSource, MessageStatus } from "@/generated/prisma/enums";
 import type { Prisma } from "@/generated/prisma/client";
-import { db } from "@/lib/db";
+import { db, withTransactionRetry } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getSmsPolicy } from "@/services/settings";
 import { creditWallet } from "@/services/billing/wallet";
@@ -51,9 +51,10 @@ export async function applyStatusUpdate(update: StatusUpdate): Promise<Transitio
   const policy = await getSmsPolicy();
   const occurredAt = update.occurredAt ?? new Date();
 
-  const result = await db.$transaction(async (tx) => {
+  // Retried as a whole if InnoDB picks it as a deadlock victim (it was rolled back, so this is safe).
+  const result = await withTransactionRetry(() => db.$transaction(async (tx) => {
     const locked = await tx.$queryRaw<{ id: string; status: MessageStatus }[]>`
-      SELECT id, status::text AS status FROM messages WHERE id = ${update.messageId}::uuid FOR UPDATE`;
+      SELECT id, status FROM messages WHERE id = ${update.messageId} FOR UPDATE`;
     if (!locked.length) return { outcome: "not_found" as const };
 
     const inserted = await tx.messageEvent.createMany({
@@ -144,7 +145,7 @@ export async function applyStatusUpdate(update: StatusUpdate): Promise<Transitio
       );
     }
     return { outcome: "applied" as const };
-  });
+  }));
 
   if (result.outcome === "stale") {
     logger.debug({ messageId: update.messageId, status: update.status }, "ignored out-of-order status update");

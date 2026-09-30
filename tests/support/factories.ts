@@ -10,11 +10,24 @@ import { createOrganizationWithOwner, ensurePermissionCatalogue } from "@/featur
 
 export const TEST_PASSWORD = "Integration-Test-2026";
 
-/** Empties every table (fast TRUNCATE) and re-creates the catalogue data the app needs. */
+/**
+ * Empties every table (fast TRUNCATE) and re-creates the catalogue data the app needs.
+ * `counters` is kept, like the PostgreSQL sequence it replaced (numbers keep increasing).
+ */
 export async function resetDatabase() {
   await drainWrites();
-  const tables = await db.$queryRaw<{ tablename: string }[]>`SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> '_prisma_migrations'`;
-  await db.$executeRawUnsafe(`TRUNCATE ${tables.map((t) => `"${t.tablename}"`).join(", ")} RESTART IDENTITY CASCADE`);
+  const tables = await db.$queryRaw<{ name: string }[]>`
+    SELECT TABLE_NAME AS name FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' AND TABLE_NAME NOT IN ('_prisma_migrations', 'counters')`;
+  // One connection for the whole reset: FOREIGN_KEY_CHECKS is a session variable.
+  await db.$transaction(
+    async (tx) => {
+      await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS = 0");
+      for (const t of tables) await tx.$executeRawUnsafe(`TRUNCATE TABLE \`${t.name}\``);
+      await tx.$executeRawUnsafe("SET FOREIGN_KEY_CHECKS = 1");
+    },
+    { timeout: 60_000 },
+  );
   clearSettingsCache();
   await ensurePermissionCatalogue();
   for (const p of defaultPlans) await db.pricingPlan.create({ data: p });

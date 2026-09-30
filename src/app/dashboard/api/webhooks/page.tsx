@@ -6,6 +6,7 @@ import { EmptyState, PageHeader, PermissionDenied } from "@/components/shared/st
 import { tenantWithPermission } from "@/lib/auth/session";
 import { can } from "@/lib/auth/context";
 import { formatDateTime, formatRelative } from "@/lib/format";
+import { jsonStringArray } from "@/lib/utils";
 import { WEBHOOK_EVENTS } from "@/services/messaging/outbound-webhooks";
 import { listWebhooks } from "@/features/developers/service";
 import { CreateWebhookDialog, WebhookMenu } from "@/features/developers/components/webhook-ui";
@@ -44,7 +45,7 @@ export default async function WebhooksPage() {
                   <CardTitle className="break-all font-mono text-sm">{h.url}</CardTitle>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     <Badge tone={h.active ? "success" : "neutral"}>{h.active ? "Active" : "Disabled"}</Badge>
-                    {h.events.map((e) => (
+                    {jsonStringArray(h.events).map((e) => (
                       <Badge key={e} tone="outline" className="font-mono">
                         {e}
                       </Badge>

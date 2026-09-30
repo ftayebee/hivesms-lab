@@ -24,6 +24,7 @@ import { generateApiKey } from "../src/lib/api/api-keys";
 import { detectOperator } from "../src/lib/phone";
 import { calculateSegments } from "../src/lib/sms-segments";
 import { topUpBreakdown } from "../src/lib/pricing";
+import { nextCounterValue } from "../src/services/billing/counters";
 import { defaultCreditPackages, defaultPlans } from "../src/config/pricing";
 import { createOrganizationWithOwner, ensurePermissionCatalogue } from "../src/features/organizations/provision";
 
@@ -307,12 +308,12 @@ async function seedPadma() {
         createdAt: at,
       },
     });
-    const n = await db.$queryRaw<{ n: bigint }[]>`SELECT nextval('invoice_number_seq') AS n`;
+    const n = await db.$transaction((tx) => nextCounterValue(tx, "invoice_number"));
     await db.invoice.create({
       data: {
         organizationId: org.id,
         paymentId: payment.id,
-        number: `INV-${at.getUTCFullYear()}-${String(n[0].n).padStart(6, "0")}`,
+        number: `INV-${at.getUTCFullYear()}-${String(n).padStart(6, "0")}`,
         subtotal: b.subtotal.toString(),
         vatRate: "15",
         vatAmount: b.vatAmount.toString(),

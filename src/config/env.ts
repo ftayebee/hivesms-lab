@@ -14,7 +14,7 @@ const schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_URL: z.url().default("http://localhost:3000"),
   DEFAULT_LOCALE: z.enum(["en", "bn"]).default("en"),
-  DATABASE_URL: z.string().min(1),
+  DATABASE_URL: z.string().regex(/^(mysql|mariadb):\/\//, "DATABASE_URL must be a mysql:// connection string"),
 
   AUTH_SECRET: z.string().min(32, "AUTH_SECRET must be at least 32 characters"),
   API_KEY_PEPPER: z.string().min(32, "API_KEY_PEPPER must be at least 32 characters"),

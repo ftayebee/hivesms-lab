@@ -85,5 +85,5 @@ export async function assertWithinSendingLimits(tx: Tx, organizationId: string, 
 
 /** Row lock on the wallet: serialises balance and limit checks per organization. */
 export async function lockWallet(tx: Tx, organizationId: string) {
-  await tx.$queryRaw`SELECT id FROM wallets WHERE "organizationId" = ${organizationId}::uuid FOR UPDATE`;
+  await tx.$queryRaw`SELECT id FROM wallets WHERE organizationId = ${organizationId} FOR UPDATE`;
 }

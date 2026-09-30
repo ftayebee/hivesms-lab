@@ -20,14 +20,15 @@ A multi-tenant bulk SMS platform for businesses in Bangladesh. It covers:
 
 - Next.js 16 (App Router, Server Actions)
 - React 19, TypeScript, Tailwind CSS 4, Radix-based UI components
-- PostgreSQL with Prisma 7 (`@prisma/adapter-pg`), Zod
+- MySQL 8+ / MariaDB 10.4+ with Prisma 7 (`@prisma/adapter-mariadb`), Zod
 - Recharts
 - Argon2id; pino logging
 - Vitest (unit and integration tests), Playwright (E2E tests)
 
 ## Quick start (local)
 
-Requirements: Node.js 22.9 or later. PostgreSQL is optional, because the repo can run an embedded one.
+Requirements: Node.js 22.9 or later and a MySQL 8+ or MariaDB 10.4+ server (XAMPP's MariaDB, a local install,
+or `docker run -d -p 3306:3306 -e MARIADB_ROOT_PASSWORD=root mariadb:11.4`).
 
 ```bash
 npm install
@@ -40,12 +41,21 @@ Then fill in the four secrets in `.env`:
 node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 ```
 
-```bash
-npm run db:local       # terminal 1: embedded PostgreSQL (UTF-8) on port 54329
+Create the databases and a user once (as the MySQL root user):
+
+```sql
+CREATE DATABASE smsflow CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE smsflow_test CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'smsflow'@'localhost' IDENTIFIED BY 'smsflow';
+GRANT ALL PRIVILEGES ON smsflow.* TO 'smsflow'@'localhost';
+GRANT ALL PRIVILEGES ON smsflow_test.* TO 'smsflow'@'localhost';
 ```
 
+`prisma migrate dev` additionally needs permission to create a temporary shadow database
+(`GRANT CREATE, DROP ON *.* TO 'smsflow'@'localhost'` on a development machine only).
+
 ```bash
-npm run db:deploy      # terminal 2: apply migrations
+npm run db:deploy      # apply migrations
 npm run db:seed        # fictional demo data (development only)
 npm run dev            # http://localhost:3000
 ```
@@ -68,22 +78,17 @@ local development.
 | Script | What it does |
 |---|---|
 | `dev` / `build` / `start` | Development server, production build (standalone), run the production build |
+| `build:deploy` | `prisma generate` + `prisma migrate deploy` + `next build` (deployment build command) |
 | `worker` | Background worker: campaigns, send queue, retries, delivery polling, webhooks, housekeeping |
-| `db:local` | Embedded PostgreSQL for development and tests |
 | `db:migrate` / `db:deploy` | Create a migration (dev) / apply migrations (prod) |
 | `db:bootstrap` | Idempotent production setup: permissions, example pricing, optional first super admin |
-| `db:seed` / `db:reset` | Demo data / wipe and re-migrate (development only) |
+| `db:seed` / `db:reset` | Demo data / wipe and re-migrate (development only; `db:reset` refuses non-local databases) |
 | `lint` / `typecheck` | ESLint / TypeScript |
 | `test:unit` | Unit tests, no database |
-| `test:integration` | Services and API route handlers against a real PostgreSQL database (`TEST_DATABASE_URL`, which must contain "test") |
+| `test:integration` | Services and API route handlers against a real MySQL/MariaDB database (`TEST_DATABASE_URL`, which must contain "test") |
 | `test:e2e` | Playwright customer journey against a production build (`npm run build` first) |
 
-The integration tests create their own schema through migrations. With `npm run db:local` running, create
-the test database once:
-
-```bash
-node --env-file=.env -e "const {Client}=require('pg');const c=new Client({connectionString:process.env.DATABASE_URL.replace(/\/\w+\?.*/,'/postgres')});c.connect().then(()=>c.query(\"CREATE DATABASE smsflow_test ENCODING 'UTF8' TEMPLATE template0\")).finally(()=>c.end())"
-```
+The integration tests create their own schema through migrations in `smsflow_test` (created above).
 
 ## Project layout
 
@@ -93,10 +98,11 @@ src/features/       domain modules (service + actions + components per feature)
 src/services/       messaging pipeline, billing, and provider abstractions (sms, payments, email, storage)
 src/lib/            auth, API handler, crypto, rate limiting, phone/segment/money utilities
 src/components/     UI kit and shared, marketing, dashboard and admin components
-prisma/             schema, migrations, demo seed
-scripts/            worker, bootstrap, embedded DB, standalone start
+prisma/             schema, migrations (MySQL), archived PostgreSQL migrations, demo seed
+scripts/            worker, bootstrap, standalone start, local-DB guard
 tests/              unit, integration, e2e, support
-docs/               product analysis, architecture, design system, deployment, integrations
+docs/               product analysis, architecture, design system, deployment, integrations,
+                    MySQL migration audit, Hostinger deployment guide
 ```
 
 ## Documentation

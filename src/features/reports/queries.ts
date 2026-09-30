@@ -4,11 +4,12 @@ import type { MessageStatus } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
 import type { TenantContext } from "@/lib/auth/context";
 import { rateFor } from "@/lib/pricing";
+import { dhakaDaySql } from "@/lib/sql";
 import { getOrganizationPlan } from "@/services/billing/pricing";
 import { dayKeys, type DateRange } from "./range";
 
 /**
- * Reporting queries. All aggregation happens in PostgreSQL and every query is scoped to the
+ * Reporting queries. All aggregation happens in the database and every query is scoped to the
  * tenant's organizationId. Days are bucketed in Asia/Dhaka.
  */
 export interface StatusTotals {
@@ -32,21 +33,21 @@ export interface MessageFilters {
 
 function whereFor(ctx: TenantContext, range: DateRange, f: MessageFilters = {}): Prisma.Sql {
   const parts: Prisma.Sql[] = [
-    Prisma.sql`"organizationId" = ${ctx.organizationId}::uuid`,
-    Prisma.sql`"createdAt" >= ${range.from}`,
-    Prisma.sql`"createdAt" < ${range.to}`,
+    Prisma.sql`organizationId = ${ctx.organizationId}`,
+    Prisma.sql`createdAt >= ${range.from}`,
+    Prisma.sql`createdAt < ${range.to}`,
   ];
-  if (f.campaignId) parts.push(Prisma.sql`"campaignId" = ${f.campaignId}::uuid`);
-  if (f.senderValue) parts.push(Prisma.sql`"senderValue" = ${f.senderValue}`);
-  if (f.status) parts.push(Prisma.sql`status = ${f.status}::"MessageStatus"`);
-  if (f.to) parts.push(Prisma.sql`"to" = ${f.to}`);
-  if (f.source) parts.push(Prisma.sql`source = ${f.source}::"MessageSource"`);
+  if (f.campaignId) parts.push(Prisma.sql`campaignId = ${f.campaignId}`);
+  if (f.senderValue) parts.push(Prisma.sql`senderValue = ${f.senderValue}`);
+  if (f.status) parts.push(Prisma.sql`status = ${f.status}`);
+  if (f.to) parts.push(Prisma.sql`\`to\` = ${f.to}`);
+  if (f.source) parts.push(Prisma.sql`source = ${f.source}`);
   return Prisma.join(parts, " AND ");
 }
 
 export async function getStatusTotals(ctx: TenantContext, range: DateRange, filters: MessageFilters = {}): Promise<StatusTotals> {
   const rows = await db.$queryRaw<{ status: MessageStatus; n: bigint; segs: bigint }[]>`
-    SELECT status::text AS status, count(*) AS n, coalesce(sum(segments), 0) AS segs
+    SELECT status, COUNT(*) AS n, COALESCE(SUM(segments), 0) AS segs
     FROM messages WHERE ${whereFor(ctx, range, filters)} GROUP BY status`;
   const by = (s: MessageStatus[]) => rows.filter((r) => s.includes(r.status)).reduce((a, r) => a + Number(r.n), 0);
   const delivered = by(["DELIVERED"]);
@@ -75,11 +76,11 @@ export interface DailyPoint {
 
 export async function getDailySeries(ctx: TenantContext, range: DateRange, filters: MessageFilters = {}): Promise<DailyPoint[]> {
   const rows = await db.$queryRaw<{ day: string; delivered: bigint; failed: bigint; pending: bigint; spend: string }[]>`
-    SELECT to_char(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Dhaka', 'YYYY-MM-DD') AS day,
-      count(*) FILTER (WHERE status = 'DELIVERED') AS delivered,
-      count(*) FILTER (WHERE status IN ('FAILED','REJECTED','EXPIRED','CANCELLED')) AS failed,
-      count(*) FILTER (WHERE status IN ('QUEUED','SUBMITTED')) AS pending,
-      coalesce(sum(cost) FILTER (WHERE "refundedAt" IS NULL), 0)::text AS spend
+    SELECT ${dhakaDaySql("createdAt")} AS day,
+      COUNT(CASE WHEN status = 'DELIVERED' THEN 1 END) AS delivered,
+      COUNT(CASE WHEN status IN ('FAILED','REJECTED','EXPIRED','CANCELLED') THEN 1 END) AS failed,
+      COUNT(CASE WHEN status IN ('QUEUED','SUBMITTED') THEN 1 END) AS pending,
+      CAST(COALESCE(SUM(CASE WHEN refundedAt IS NULL THEN cost END), 0) AS CHAR) AS spend
     FROM messages WHERE ${whereFor(ctx, range, filters)}
     GROUP BY 1 ORDER BY 1`;
   const map = new Map(rows.map((r) => [r.day, r]));
@@ -109,14 +110,14 @@ export async function getSpend(ctx: TenantContext, range: DateRange) {
 
 export async function getOperatorBreakdown(ctx: TenantContext, range: DateRange, filters: MessageFilters = {}) {
   const rows = await db.$queryRaw<{ operator: string | null; total: bigint; delivered: bigint }[]>`
-    SELECT operator, count(*) AS total, count(*) FILTER (WHERE status = 'DELIVERED') AS delivered
+    SELECT operator, COUNT(*) AS total, COUNT(CASE WHEN status = 'DELIVERED' THEN 1 END) AS delivered
     FROM messages WHERE ${whereFor(ctx, range, filters)} GROUP BY operator ORDER BY total DESC`;
   return rows.map((r) => ({ operator: r.operator ?? "Unknown", total: Number(r.total), delivered: Number(r.delivered) }));
 }
 
 export async function getFailureReasons(ctx: TenantContext, range: DateRange, filters: MessageFilters = {}, limit = 6) {
   const rows = await db.$queryRaw<{ reason: string | null; n: bigint }[]>`
-    SELECT coalesce("errorMessage", 'Unknown') AS reason, count(*) AS n
+    SELECT COALESCE(errorMessage, 'Unknown') AS reason, COUNT(*) AS n
     FROM messages WHERE ${whereFor(ctx, range, filters)} AND status IN ('FAILED','REJECTED','EXPIRED','CANCELLED')
     GROUP BY 1 ORDER BY n DESC LIMIT ${limit}`;
   return rows.map((r) => ({ reason: r.reason ?? "Unknown", count: Number(r.n) }));

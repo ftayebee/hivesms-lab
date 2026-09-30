@@ -81,7 +81,8 @@ export async function submitAbuseReport(_prev: unknown, formData: FormData): Pro
     if (raw.website) return { ok: true, message: "Thank you. Your report was received." };
     const input = abuseSchema.parse(raw);
     const meta = await guard("abuse");
-    const sender = await db.senderId.findFirst({ where: { value: { equals: input.senderValue, mode: "insensitive" } }, select: { organizationId: true } });
+    // Case-insensitive: sender_ids.value uses the default utf8mb4_unicode_ci collation.
+    const sender = await db.senderId.findFirst({ where: { value: { equals: input.senderValue } }, select: { organizationId: true } });
     const receivedAt = input.receivedAt ? new Date(input.receivedAt) : null;
     await db.abuseReport.create({
       data: {

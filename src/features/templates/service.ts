@@ -15,7 +15,7 @@ export type TemplateInput = z.infer<typeof templateSchema>;
 export async function listTemplates(ctx: TenantContext, q?: string) {
   requirePermission(ctx, "templates:read");
   return db.template.findMany({
-    where: { organizationId: ctx.organizationId, deletedAt: null, ...(q ? { OR: [{ name: { contains: q, mode: "insensitive" } }, { body: { contains: q, mode: "insensitive" } }] } : {}) },
+    where: { organizationId: ctx.organizationId, deletedAt: null, ...(q ? { OR: [{ name: { contains: q } }, { body: { contains: q } }] } : {}) },
     orderBy: { updatedAt: "desc" },
     take: 200,
   });

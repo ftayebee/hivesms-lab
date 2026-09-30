@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { trackWrite } from "@/lib/background-writes";
 import { hmacSha256, randomAlphanumeric, randomToken } from "@/lib/crypto";
 import type { TenantContext } from "@/lib/auth/context";
+import { jsonStringArray } from "@/lib/utils";
 
 /**
  * API key format: sfk_live_<8-char prefix id>_<43-char secret>
@@ -49,8 +50,11 @@ export async function authenticateApiKey(authorization: string | null, ip: strin
   if (!key) return "invalid";
   if (key.status === "REVOKED") return "revoked";
   if (key.expiresAt && key.expiresAt < new Date()) return "expired";
-  if (key.ipAllowlist.length && (!ip || !key.ipAllowlist.includes(ip))) return "ip_not_allowed";
+  const ipAllowlist = jsonStringArray(key.ipAllowlist);
+  if (ipAllowlist.length && (!ip || !ipAllowlist.includes(ip))) return "ip_not_allowed";
   if (key.organization.deletedAt || key.organization.status !== "ACTIVE") return "org_suspended";
+
+  const scopes = jsonStringArray(key.scopes);
 
   // Throttled last-used tracking (at most once a minute per key).
   if (!key.lastUsedAt || Date.now() - key.lastUsedAt.getTime() > 60_000) {
@@ -59,7 +63,7 @@ export async function authenticateApiKey(authorization: string | null, ip: strin
 
   return {
     apiKeyId: key.id,
-    scopes: key.scopes,
+    scopes,
     ctx: {
       organizationId: key.organizationId,
       organizationStatus: key.organization.status,
@@ -67,7 +71,7 @@ export async function authenticateApiKey(authorization: string | null, ip: strin
       apiKeyId: key.id,
       roleKey: null,
       // API keys act only through scopes; sending also requires the matching org permission.
-      permissions: key.scopes.includes("sms:send") ? ["sms:send"] : [],
+      permissions: scopes.includes("sms:send") ? ["sms:send"] : [],
       ip,
     },
   };

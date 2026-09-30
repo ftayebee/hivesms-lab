@@ -21,7 +21,7 @@ export async function listOrganizations(q: { q?: string; status?: "ACTIVE" | "SU
   const where: Prisma.OrganizationWhereInput = {
     deletedAt: null,
     ...(q.status ? { status: q.status } : {}),
-    ...(q.q ? { OR: [{ name: { contains: q.q, mode: "insensitive" } }, { members: { some: { user: { email: { contains: q.q.toLowerCase() } } } } }] } : {}),
+    ...(q.q ? { OR: [{ name: { contains: q.q } }, { members: { some: { user: { email: { contains: q.q.toLowerCase() } } } } }] } : {}),
   };
   const [rows, total] = await Promise.all([
     db.organization.findMany({
@@ -288,7 +288,7 @@ export async function listUsers(q: { q?: string; role?: string; page: number }) 
   const where: Prisma.UserWhereInput = {
     deletedAt: null,
     ...(q.role ? { platformRole: q.role as never } : {}),
-    ...(q.q ? { OR: [{ email: { contains: q.q.toLowerCase() } }, { name: { contains: q.q, mode: "insensitive" } }] } : {}),
+    ...(q.q ? { OR: [{ email: { contains: q.q.toLowerCase() } }, { name: { contains: q.q } }] } : {}),
   };
   const [rows, total] = await Promise.all([
     db.user.findMany({ where, orderBy: { createdAt: "desc" }, skip: (q.page - 1) * ADMIN_PAGE, take: ADMIN_PAGE, include: { memberships: { include: { organization: { select: { id: true, name: true } } } } } }),

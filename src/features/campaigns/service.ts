@@ -271,7 +271,7 @@ export async function listCampaigns(ctx: TenantContext, q: { q?: string; status?
   const where: Prisma.CampaignWhereInput = {
     organizationId: ctx.organizationId,
     deletedAt: null,
-    ...(q.q ? { name: { contains: q.q, mode: "insensitive" } } : {}),
+    ...(q.q ? { name: { contains: q.q } } : {}),
     ...(q.status ? { status: q.status } : {}),
     ...(q.type ? { smsType: q.type } : {}),
   };
@@ -290,11 +290,11 @@ export async function getCampaignDetail(ctx: TenantContext, id: string) {
   const [statusRows, failures, operators, timeline, recipientSkips, creator] = await Promise.all([
     db.message.groupBy({ by: ["status"], where: { campaignId: id }, _count: true }),
     db.$queryRaw<{ reason: string; n: bigint }[]>`
-      SELECT coalesce("errorMessage", 'Unknown') AS reason, count(*) AS n FROM messages
-      WHERE "campaignId" = ${id}::uuid AND status IN ('FAILED','REJECTED','EXPIRED','CANCELLED') GROUP BY 1 ORDER BY n DESC LIMIT 8`,
+      SELECT COALESCE(errorMessage, 'Unknown') AS reason, COUNT(*) AS n FROM messages
+      WHERE campaignId = ${id} AND status IN ('FAILED','REJECTED','EXPIRED','CANCELLED') GROUP BY 1 ORDER BY n DESC LIMIT 8`,
     db.$queryRaw<{ operator: string | null; total: bigint; delivered: bigint }[]>`
-      SELECT operator, count(*) AS total, count(*) FILTER (WHERE status = 'DELIVERED') AS delivered FROM messages
-      WHERE "campaignId" = ${id}::uuid GROUP BY operator ORDER BY total DESC`,
+      SELECT operator, COUNT(*) AS total, COUNT(CASE WHEN status = 'DELIVERED' THEN 1 END) AS delivered FROM messages
+      WHERE campaignId = ${id} GROUP BY operator ORDER BY total DESC`,
     db.auditLog.findMany({ where: { organizationId: ctx.organizationId, targetType: "campaign", targetId: id }, orderBy: { createdAt: "asc" }, include: { actor: { select: { name: true } } } }),
     db.campaignRecipient.groupBy({ by: ["status"], where: { campaignId: id, status: { not: "INCLUDED" } }, _count: true }),
     c.createdById ? db.user.findUnique({ where: { id: c.createdById }, select: { name: true } }) : null,

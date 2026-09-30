@@ -11,8 +11,11 @@ import { applyStatusUpdate } from "./delivery";
  * atomic claims). Invoked by scripts/worker.ts in a loop, or by POST /api/internal/worker/tick
  * from an external scheduler.
  */
-export async function runWorkerTick(opts: { maxBatches?: number; batchSize?: number } = {}) {
+export async function runWorkerTick(opts: { maxBatches?: number; batchSize?: number; budgetMs?: number } = {}) {
   const started = Date.now();
+  // Cron-driven ticks run inside an HTTP request: stop claiming new batches once the budget is
+  // spent so the request finishes before proxy timeouts. Unsent messages wait for the next tick.
+  const deadline = opts.budgetMs ? started + opts.budgetMs : Infinity;
   const campaigns = await launchDueCampaigns();
 
   let claimed = 0;
@@ -22,7 +25,7 @@ export async function runWorkerTick(opts: { maxBatches?: number; batchSize?: num
     const r = await processQueue(opts.batchSize ?? 100);
     claimed += r.claimed;
     submitted += r.submitted;
-    if (r.claimed === 0) break;
+    if (r.claimed === 0 || Date.now() > deadline) break;
   }
 
   await cancelLeftoverMessages();

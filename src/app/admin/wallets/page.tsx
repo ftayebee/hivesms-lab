@@ -18,7 +18,7 @@ export default async function AdminWalletsPage({ searchParams }: PageProps<"/adm
     db.wallet.findMany({ orderBy: { balance: "desc" }, skip: (page - 1) * 25, take: 25, include: { organization: { select: { id: true, name: true, status: true } } } }),
     db.wallet.count(),
     db.wallet.aggregate({ _sum: { balance: true } }),
-    db.$queryRaw<{ n: bigint }[]>`SELECT count(*) AS n FROM wallets WHERE balance < "lowBalanceThreshold"`,
+    db.$queryRaw<{ n: bigint }[]>`SELECT COUNT(*) AS n FROM wallets WHERE balance < lowBalanceThreshold`,
   ]);
   return (
     <>

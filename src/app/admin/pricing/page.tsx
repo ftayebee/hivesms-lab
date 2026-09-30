@@ -7,6 +7,7 @@ import { AdminForm } from "@/components/admin/admin-ui";
 import { requirePlatform } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { formatBDT } from "@/lib/format";
+import { jsonStringArray } from "@/lib/utils";
 import { getBillingPolicy } from "@/services/settings";
 import { saveBillingPolicyAction, savePackageAction, savePlanAction } from "@/features/admin/actions";
 import type { PricingPlan, CreditPackage } from "@/generated/prisma/client";
@@ -55,7 +56,7 @@ function PlanForm({ plan }: { plan?: PricingPlan }) {
         <Input name="description" defaultValue={plan?.description ?? ""} />
       </Field>
       <Field label="Features (one per line)" className="sm:col-span-2">
-        <Textarea name="features" rows={3} defaultValue={plan?.features.join("\n")} />
+        <Textarea name="features" rows={3} defaultValue={plan ? jsonStringArray(plan.features).join("\n") : undefined} />
       </Field>
       <Field label="Sort order">
         <Input name="sortOrder" type="number" defaultValue={n(plan?.sortOrder ?? 0)} />

@@ -26,7 +26,7 @@ const MAX_ATTEMPTS = 8;
 export async function enqueueWebhookEvent(organizationId: string, event: WebhookEvent, data: Record<string, unknown>, tx?: Tx) {
   const client = tx ?? db;
   const endpoints = await client.webhookEndpoint.findMany({
-    where: { organizationId, active: true, events: { has: event } },
+    where: { organizationId, active: true, events: { array_contains: [event] } },
     select: { id: true },
   });
   if (!endpoints.length) return;

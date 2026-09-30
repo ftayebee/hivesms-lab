@@ -8,10 +8,13 @@ import { emailTemplates } from "@/services/email/templates";
  * when the wallet is topped up above the threshold (see creditWallet).
  */
 export async function checkLowBalance(organizationId: string) {
+  // Atomic claim: only the caller whose UPDATE flips the flag sends the alert.
+  const changed = await db.$executeRaw`
+    UPDATE wallets SET lowBalanceNotifiedAt = ${new Date()}
+    WHERE organizationId = ${organizationId} AND balance < lowBalanceThreshold AND lowBalanceNotifiedAt IS NULL`;
+  if (!changed) return;
   const claimed = await db.$queryRaw<{ balance: string; threshold: string }[]>`
-    UPDATE wallets SET "lowBalanceNotifiedAt" = now()
-    WHERE "organizationId" = ${organizationId}::uuid AND balance < "lowBalanceThreshold" AND "lowBalanceNotifiedAt" IS NULL
-    RETURNING balance::text, "lowBalanceThreshold"::text AS threshold`;
+    SELECT CAST(balance AS CHAR) AS balance, CAST(lowBalanceThreshold AS CHAR) AS threshold FROM wallets WHERE organizationId = ${organizationId}`;
   if (!claimed.length) return;
   const balance = formatBDT(claimed[0].balance);
   const threshold = formatBDT(claimed[0].threshold);

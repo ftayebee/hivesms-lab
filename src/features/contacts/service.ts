@@ -1,10 +1,11 @@
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import type { ConsentStatus } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
 import { AppError, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { actorOf, requirePermission, type TenantContext } from "@/lib/auth/context";
 import { normalizeBdPhone } from "@/lib/phone";
+import { jsonStringArray } from "@/lib/utils";
 import { parseCsv, toCsv, unescapeCsvCell, CSV_MAX_ROWS } from "@/lib/csv";
 import type { ContactInput, ContactListQuery } from "./schemas";
 
@@ -18,15 +19,16 @@ function listWhere(ctx: TenantContext, q: Partial<ContactListQuery>): Prisma.Con
   const where: Prisma.ContactWhereInput = { organizationId: ctx.organizationId, deletedAt: null };
   if (q.q) {
     const phone = normalizeBdPhone(q.q);
+    // Text columns use a case-insensitive collation (utf8mb4_unicode_ci), so `contains` ignores case.
     where.OR = [
-      { name: { contains: q.q, mode: "insensitive" } },
-      { email: { contains: q.q, mode: "insensitive" } },
-      { company: { contains: q.q, mode: "insensitive" } },
+      { name: { contains: q.q } },
+      { email: { contains: q.q } },
+      { company: { contains: q.q } },
       { phone: { contains: phone ?? (q.q.replace(/[^\d+]/g, "") || q.q) } },
     ];
   }
   if (q.group) where.groups = { some: { groupId: q.group } };
-  if (q.tag) where.tags = { has: q.tag };
+  if (q.tag) where.tags = { array_contains: [q.tag] };
   if (q.consent) where.consentStatus = q.consent;
   return where;
 }
@@ -172,8 +174,8 @@ export async function bulkContacts(ctx: TenantContext, ids: string[], action: Bu
     case "addTag": {
       const tag = action.tag.trim().toLowerCase().replace(/\s+/g, "-").slice(0, 40);
       if (!tag) throw new AppError("VALIDATION_ERROR", "Enter a tag.");
-      await db.$executeRaw`UPDATE contacts SET tags = array_append(tags, ${tag}), "updatedAt" = now()
-        WHERE id = ANY(${ownedIds}::uuid[]) AND NOT (${tag} = ANY(tags))`;
+      await db.$executeRaw`UPDATE contacts SET tags = JSON_ARRAY_APPEND(tags, '$', ${tag}), updatedAt = ${new Date()}
+        WHERE id IN (${Prisma.join(ownedIds)}) AND NOT JSON_CONTAINS(tags, JSON_QUOTE(${tag}))`;
       break;
     }
     case "setConsent":
@@ -341,7 +343,7 @@ export async function exportContactsCsv(ctx: TenantContext, q: Partial<ContactLi
       r.name,
       r.email,
       r.company,
-      r.tags.join(","),
+      jsonStringArray(r.tags).join(","),
       r.groups.map((g) => g.group.name).join(","),
       r.consentStatus,
       r.consentSource,
@@ -421,7 +423,11 @@ export async function removeSuppression(ctx: TenantContext, id: string) {
 }
 
 export async function allTags(ctx: TenantContext): Promise<string[]> {
-  const rows = await db.$queryRaw<{ tag: string }[]>`
-    SELECT DISTINCT unnest(tags) AS tag FROM contacts WHERE "organizationId" = ${ctx.organizationId}::uuid AND "deletedAt" IS NULL ORDER BY 1 LIMIT 200`;
-  return rows.map((r) => r.tag);
+  // Tags are JSON arrays; distinct values are collected here because JSON_TABLE is not available
+  // on MariaDB < 10.6. Only rows that have tags are read.
+  const rows = await db.$queryRaw<{ tags: string }[]>`
+    SELECT tags FROM contacts WHERE organizationId = ${ctx.organizationId} AND deletedAt IS NULL AND JSON_LENGTH(tags) > 0`;
+  const tags = new Set<string>();
+  for (const r of rows) for (const t of jsonStringArray(typeof r.tags === "string" ? JSON.parse(r.tags) : r.tags)) tags.add(t);
+  return [...tags].sort().slice(0, 200);
 }

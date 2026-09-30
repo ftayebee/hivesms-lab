@@ -36,7 +36,7 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
-  serverExternalPackages: ["pino", "pino-pretty", "@node-rs/argon2", "embedded-postgres", "pg"],
+  serverExternalPackages: ["pino", "pino-pretty", "@node-rs/argon2", "mariadb"],
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts"],
     // CSV imports (10 MB) and sender ID documents (3 × 5 MB) are uploaded through server actions.

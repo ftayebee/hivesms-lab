@@ -1,6 +1,7 @@
 import { Decimal } from "decimal.js";
 import { db } from "@/lib/db";
 import { dhakaDateKey, startOfDhakaDay } from "@/lib/format";
+import { dhakaDaySql } from "@/lib/sql";
 
 const DAY = 86_400_000;
 
@@ -27,14 +28,14 @@ export async function getAdminOverview() {
     db.apiLog.count({ where: { createdAt: { gte: d1 } } }),
     db.contactRequest.count({ where: { status: "NEW" } }),
     db.$queryRaw<{ day: string; delivered: bigint; failed: bigint; pending: bigint }[]>`
-      SELECT to_char(("createdAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Dhaka', 'YYYY-MM-DD') AS day,
-        count(*) FILTER (WHERE status = 'DELIVERED') AS delivered,
-        count(*) FILTER (WHERE status IN ('FAILED','REJECTED','EXPIRED','CANCELLED')) AS failed,
-        count(*) FILTER (WHERE status IN ('QUEUED','SUBMITTED')) AS pending
-      FROM messages WHERE "createdAt" >= ${d30} GROUP BY 1 ORDER BY 1`,
+      SELECT ${dhakaDaySql("createdAt")} AS day,
+        COUNT(CASE WHEN status = 'DELIVERED' THEN 1 END) AS delivered,
+        COUNT(CASE WHEN status IN ('FAILED','REJECTED','EXPIRED','CANCELLED') THEN 1 END) AS failed,
+        COUNT(CASE WHEN status IN ('QUEUED','SUBMITTED') THEN 1 END) AS pending
+      FROM messages WHERE createdAt >= ${d30} GROUP BY 1 ORDER BY 1`,
     db.$queryRaw<{ day: string; amount: string }[]>`
-      SELECT to_char(("completedAt" AT TIME ZONE 'UTC') AT TIME ZONE 'Asia/Dhaka', 'YYYY-MM-DD') AS day, sum(amount)::text AS amount
-      FROM payments WHERE status = 'SUCCEEDED' AND "completedAt" >= ${d30} GROUP BY 1 ORDER BY 1`,
+      SELECT ${dhakaDaySql("completedAt")} AS day, CAST(SUM(amount) AS CHAR) AS amount
+      FROM payments WHERE status = 'SUCCEEDED' AND completedAt >= ${d30} GROUP BY 1 ORDER BY 1`,
   ]);
   const byDay = new Map(daily.map((d) => [d.day, d]));
   const revByDay = new Map(revenueDaily.map((d) => [d.day, Number(d.amount)]));

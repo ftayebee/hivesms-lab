@@ -1,7 +1,8 @@
 # 04 · Deployment, operations, backups and monitoring
 
-This guide covers running SMSFlow BD in production: the processes, configuration, first
-deployment, upgrades, backups and monitoring.
+This guide covers running SMSFlow BD in production on a VPS or container host: the processes,
+configuration, first deployment, upgrades, backups and monitoring. For Hostinger Business web
+hosting (managed Node.js, no Docker), follow [07-hostinger-deployment](07-hostinger-deployment.md).
 
 > **Status.** The Dockerfile and `docker-compose.yml` follow standard patterns, but they were
 > written on a machine without Docker and **have not been built or run yet**. Build them in a
@@ -15,11 +16,11 @@ deployment, upgrades, backups and monitoring.
 | Process | Command | Scales | Notes |
 |---|---|---|---|
 | **web** | `node server.js` (standalone build) or `npm run start` | Horizontally | Stateless apart from `LOCAL_DATA_DIR` (use S3 storage with several instances). |
-| **worker** | `npm run worker` | Horizontally | Launches campaigns, dispatches the queue, retries, polls delivery, sends customer webhooks, housekeeping. All steps claim work with `FOR UPDATE SKIP LOCKED` or atomic updates, so extra workers add throughput without double-sending. |
-| **PostgreSQL** | 15+ (compose uses 17) | Primary + replicas | Must use **UTF-8** encoding (Bangla content). |
+| **worker** | `npm run worker` | Horizontally | Launches campaigns, dispatches the queue, retries, polls delivery, sends customer webhooks, housekeeping. All steps claim work with row locks plus a lease, or atomic conditional updates, so extra workers add throughput without double-sending. |
+| **MySQL / MariaDB** | MySQL 8.0+ or MariaDB 10.4+ (compose uses MariaDB 11.4) | Primary + replicas | Tables are created as `utf8mb4` (Bangla content) by the migrations. |
 | **migrate job** | `npx prisma migrate deploy && npm run db:bootstrap` | Once per deploy | Run before new web/worker versions start. |
 
-Sessions, rate limits, idempotency keys and the queue all live in PostgreSQL. There is no
+Sessions, rate limits, idempotency keys and the queue all live in the database. There is no
 Redis dependency. For very high throughput, see "Scaling" below.
 
 **Serverless / no long-running processes.** Instead of the worker, call
@@ -40,7 +41,7 @@ Every variable is documented in [`.env.example`](../.env.example). Production es
 |---|---|
 | `NODE_ENV` | `production` (set by the Docker image and `npm run start`). |
 | `APP_URL` | Public HTTPS origin, e.g. `https://sms.example.com`. Also a **build argument**: static marketing pages bake it into canonical URLs and the sitemap. |
-| `DATABASE_URL` | PostgreSQL with TLS if the DB is remote (`?sslmode=require`). |
+| `DATABASE_URL` | `mysql://USER:PASSWORD@HOST:3306/DATABASE`. Append `?ssl=true` for a remote server that requires TLS. URL-encode special characters in the password. |
 | `AUTH_SECRET`, `API_KEY_PEPPER`, `SETTINGS_ENCRYPTION_KEY`, `CRON_SECRET` | Unique random values: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`. Store them in a secret manager. |
 | `SMS_PROVIDER` | `http` with a reviewed adapter, or a new adapter (see [05-integrations](05-integrations.md)). `mock` sends nothing. |
 | `EMAIL_PROVIDER` | `http` (or a new adapter). `console` only writes files to `LOCAL_DATA_DIR/mailbox`. |
@@ -65,7 +66,7 @@ encrypted with AES-256-GCM and never sent back to the browser. Database settings
 
 ```bash
 cp .env.example .env.production        # fill in real values; keep this file out of git
-# .env.production also needs: POSTGRES_PASSWORD, APP_URL, optionally BOOTSTRAP_ADMIN_EMAIL
+# .env.production also needs: MYSQL_PASSWORD, MYSQL_ROOT_PASSWORD, APP_URL, optionally BOOTSTRAP_ADMIN_EMAIL
 docker compose --env-file .env.production up -d --build
 docker compose logs migrate            # shows the one-time admin password if BOOTSTRAP_ADMIN_EMAIL was set
 ```
@@ -125,17 +126,18 @@ Migration rules for contributors:
 
 ## 5. Backups and restore
 
-Everything that matters is in PostgreSQL: wallets, the ledger, invoices, messages and audit
+Everything that matters is in the database: wallets, the ledger, invoices, messages and audit
 logs. Plus uploaded sender-ID documents, which live in S3 or `LOCAL_DATA_DIR/storage`.
 
 **Recommended**
-- Use managed PostgreSQL with point-in-time recovery, *or* WAL archiving (pgBackRest or WAL-G) on
-  self-hosted databases.
-- Also take a nightly logical dump for portability:
+- Use a managed MySQL/MariaDB with point-in-time recovery, *or* binary-log archiving plus
+  Mariabackup/XtraBackup on self-hosted databases.
+- Also take a nightly logical dump for portability (`--single-transaction` takes a consistent
+  InnoDB snapshot without locking tables):
 
 ```bash
-docker compose exec -T db pg_dump -U smsflow -d smsflow --format=custom --no-owner \
-  > backups/smsflow-$(date +%F).dump
+docker compose exec -T db sh -c 'mariadb-dump -u root -p"$MARIADB_ROOT_PASSWORD" --single-transaction --routines --triggers smsflow' \
+  | gzip > backups/smsflow-$(date +%F).sql.gz
 ```
 
 - Store backups off-host and encrypted, e.g. an S3 bucket with object lock or versioning. Keep 7 daily, 4 weekly and 12 monthly copies,
@@ -147,8 +149,8 @@ docker compose exec -T db pg_dump -U smsflow -d smsflow --format=custom --no-own
 **Restore drill (do it quarterly)**
 
 ```bash
-createdb -U smsflow -T template0 -E UTF8 smsflow_restore
-pg_restore -U smsflow -d smsflow_restore --no-owner backups/smsflow-YYYY-MM-DD.dump
+docker compose exec -T db sh -c 'mariadb -u root -p"$MARIADB_ROOT_PASSWORD" -e "CREATE DATABASE smsflow_restore CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"'
+gunzip -c backups/smsflow-YYYY-MM-DD.sql.gz | docker compose exec -T db sh -c 'mariadb -u root -p"$MARIADB_ROOT_PASSWORD" smsflow_restore'
 # Point a staging app at smsflow_restore; verify sign-in, wallet balances, invoices, reports.
 ```
 
@@ -156,12 +158,12 @@ A quick integrity check after restoring: for every wallet, `balance` should equa
 ledger entry's `balance_after`.
 
 ```sql
--- Table names are snake_case; column names are camelCase and must be quoted.
-SELECT w."organizationId", w.balance, t."balanceAfter"
+-- Table names are snake_case; column names are camelCase.
+SELECT w.organizationId, w.balance,
+  (SELECT t.balanceAfter FROM wallet_transactions t
+   WHERE t.organizationId = w.organizationId ORDER BY t.createdAt DESC, t.id DESC LIMIT 1) AS lastBalanceAfter
 FROM wallets w
-JOIN LATERAL (SELECT "balanceAfter" FROM wallet_transactions
-              WHERE "organizationId" = w."organizationId" ORDER BY "createdAt" DESC, id DESC LIMIT 1) t ON true
-WHERE w.balance <> t."balanceAfter";   -- expect zero rows
+HAVING lastBalanceAfter IS NOT NULL AND w.balance <> lastBalanceAfter;   -- expect zero rows
 ```
 
 ---
@@ -232,5 +234,5 @@ logs). Messages and ledger entries back invoices and disputes, so keep them long
 - **Database:** the hot paths are `messages` inserts, status updates and the queue claim, all
   of which are indexed. Beyond a few million messages a month, consider monthly partitioning of
   `messages`/`message_events`/`api_logs`, and a read replica for reports.
-- **Rate limiting** uses PostgreSQL upserts. It is fine for moderate API traffic. At very high request
+- **Rate limiting** uses database upserts. It is fine for moderate API traffic. At very high request
   rates, move `src/lib/rate-limit.ts` to Redis; the interface is a single function.

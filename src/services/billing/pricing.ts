@@ -1,6 +1,7 @@
 import type { PricingPlan } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { jsonStringArray } from "@/lib/utils";
 import { defaultPlans, defaultCreditPackages } from "@/config/pricing";
 
 /**
@@ -36,7 +37,7 @@ function toPublic(p: PricingPlan): PublicPlan {
     promotionalNonMasking: Number(p.promotionalNonMasking),
     promotionalMasking: Number(p.promotionalMasking),
     senderIdFee: Number(p.senderIdFee),
-    features: p.features,
+    features: jsonStringArray(p.features),
     isCustom: p.isCustom,
     isDefault: p.isDefault,
     highlighted: p.highlighted,

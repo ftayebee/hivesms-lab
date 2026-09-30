@@ -10,6 +10,7 @@ import { EmptyState, PageHeader, PermissionDenied } from "@/components/shared/st
 import { tenantWithPermission } from "@/lib/auth/session";
 import { can } from "@/lib/auth/context";
 import { formatDate, formatRelative } from "@/lib/format";
+import { jsonStringArray } from "@/lib/utils";
 import { siteConfig } from "@/config/site";
 import { listApiKeys } from "@/features/developers/service";
 import { CreateApiKeyDialog, RevokeKeyButton } from "@/features/developers/components/api-key-ui";
@@ -76,12 +77,12 @@ export default async function ApiKeysPage() {
               header: "Permissions",
               cell: (k) => (
                 <div className="flex max-w-72 flex-wrap gap-1">
-                  {k.scopes.map((s) => (
+                  {jsonStringArray(k.scopes).map((s) => (
                     <Badge key={s} tone="outline" className="font-mono">
                       {s}
                     </Badge>
                   ))}
-                  {k.ipAllowlist.length > 0 && <Badge tone="accent">{k.ipAllowlist.length} IP{k.ipAllowlist.length > 1 ? "s" : ""}</Badge>}
+                  {jsonStringArray(k.ipAllowlist).length > 0 && <Badge tone="accent">{jsonStringArray(k.ipAllowlist).length} IP{jsonStringArray(k.ipAllowlist).length > 1 ? "s" : ""}</Badge>}
                 </div>
               ),
             },

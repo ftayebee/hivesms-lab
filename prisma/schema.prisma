@@ -1,10 +1,12 @@
-// SMSFlow BD - relational schema (PostgreSQL)
+// SMSFlow BD - relational schema (MySQL 8+ / MariaDB 10.4+)
 //
 // Conventions
-// - UUID primary keys (safe to expose in URLs, not enumerable).
+// - UUID primary keys stored as CHAR(36) (safe to expose in URLs, not enumerable).
 // - Every customer-owned row carries organizationId; all tenant queries filter on it.
 // - Money is Decimal(14,4) in BDT. Never use floats for money.
 // - deletedAt = soft delete for user-facing tenant data.
+// - String defaults to VARCHAR(191): free text uses @db.Text, longer keys an explicit @db.VarChar.
+// - String lists are Json arrays (MySQL has no array columns); read them with jsonStringArray().
 
 generator client {
   provider = "prisma-client"
@@ -12,7 +14,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "mysql"
 }
 
 // ─────────────────────────────── Enums ───────────────────────────────
@@ -214,10 +216,10 @@ enum LeadStatus {
 // ─────────────────────────────── Identity ───────────────────────────────
 
 model User {
-  id                String       @id @default(uuid()) @db.Uuid
-  email             String       @unique
+  id                String       @id @default(uuid()) @db.Char(36)
+  email             String       @unique @db.VarChar(254)
   phone             String?      @unique
-  name              String
+  name              String       @db.VarChar(255)
   passwordHash      String
   platformRole      PlatformRole @default(USER)
   status            UserStatus   @default(ACTIVE)
@@ -247,12 +249,12 @@ model User {
 }
 
 model Session {
-  id                   String   @id @default(uuid()) @db.Uuid
+  id                   String   @id @default(uuid()) @db.Char(36)
   tokenHash            String   @unique
-  userId               String   @db.Uuid
-  activeOrganizationId String?  @db.Uuid
+  userId               String   @db.Char(36)
+  activeOrganizationId String?  @db.Char(36)
   ipAddress            String?
-  userAgent            String?
+  userAgent            String?  @db.Text
   expiresAt            DateTime
   lastSeenAt           DateTime @default(now())
   createdAt            DateTime @default(now())
@@ -265,11 +267,11 @@ model Session {
 }
 
 model VerificationToken {
-  id         String                @id @default(uuid()) @db.Uuid
-  userId     String                @db.Uuid
+  id         String                @id @default(uuid()) @db.Char(36)
+  userId     String                @db.Char(36)
   type       VerificationTokenType
   tokenHash  String                @unique
-  target     String? // email or phone the token was issued for
+  target     String?               @db.VarChar(254) // email or phone the token was issued for
   attempts   Int                   @default(0)
   expiresAt  DateTime
   consumedAt DateTime?
@@ -284,19 +286,19 @@ model VerificationToken {
 // ─────────────────────────────── Tenancy & RBAC ───────────────────────────────
 
 model Organization {
-  id                    String             @id @default(uuid()) @db.Uuid
-  name                  String
+  id                    String             @id @default(uuid()) @db.Char(36)
+  name                  String             @db.VarChar(255)
   slug                  String             @unique
   status                OrganizationStatus @default(ACTIVE)
-  suspendedReason       String?
+  suspendedReason       String?            @db.Text
   industry              String?
-  website               String?
-  address               String?
-  billingEmail          String?
+  website               String?            @db.VarChar(500)
+  address               String?            @db.Text
+  billingEmail          String?            @db.VarChar(254)
   taxId                 String? // e.g. BIN for VAT invoices
   country               String             @default("BD")
   timezone              String             @default("Asia/Dhaka")
-  pricingPlanId         String?            @db.Uuid
+  pricingPlanId         String?            @db.Char(36)
   // Anti-abuse controls
   dailySendLimit        Int                @default(1000)
   monthlySendLimit      Int                @default(20000)
@@ -333,10 +335,10 @@ model Organization {
 }
 
 model Permission {
-  id          String @id @default(uuid()) @db.Uuid
+  id          String @id @default(uuid()) @db.Char(36)
   key         String @unique
   group       String
-  description String
+  description String @db.Text
 
   roles RolePermission[]
 
@@ -344,11 +346,11 @@ model Permission {
 }
 
 model Role {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @db.Char(36)
   key            String // OWNER | ADMIN | MANAGER | DEVELOPER | VIEWER
   name           String
-  description    String?
+  description    String?  @db.Text
   isSystem       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -363,8 +365,8 @@ model Role {
 }
 
 model RolePermission {
-  roleId       String @db.Uuid
-  permissionId String @db.Uuid
+  roleId       String @db.Char(36)
+  permissionId String @db.Char(36)
 
   role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
@@ -374,12 +376,12 @@ model RolePermission {
 }
 
 model OrganizationMember {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @db.Uuid
-  userId         String       @db.Uuid
-  roleId         String       @db.Uuid
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String       @db.Char(36)
+  userId         String       @db.Char(36)
+  roleId         String       @db.Char(36)
   status         MemberStatus @default(ACTIVE)
-  invitedById    String?      @db.Uuid
+  invitedById    String?      @db.Char(36)
   joinedAt       DateTime     @default(now())
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
@@ -394,12 +396,12 @@ model OrganizationMember {
 }
 
 model Invitation {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  email          String
-  roleId         String    @db.Uuid
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @db.Char(36)
+  email          String    @db.VarChar(254)
+  roleId         String    @db.Char(36)
   tokenHash      String    @unique
-  invitedById    String    @db.Uuid
+  invitedById    String    @db.Char(36)
   expiresAt      DateTime
   acceptedAt     DateTime?
   revokedAt      DateTime?
@@ -415,16 +417,16 @@ model Invitation {
 // ─────────────────────────────── Contacts ───────────────────────────────
 
 model Contact {
-  id             String        @id @default(uuid()) @db.Uuid
-  organizationId String        @db.Uuid
-  name           String?
+  id             String        @id @default(uuid()) @db.Char(36)
+  organizationId String        @db.Char(36)
+  name           String?       @db.VarChar(255)
   phone          String // E.164, e.g. +8801712345678
-  email          String?
-  company        String?
-  tags           String[]      @default([])
+  email          String?       @db.VarChar(254)
+  company        String?       @db.VarChar(255)
+  tags           Json          @default("[]") // string[]
   customFields   Json          @default("{}")
   consentStatus  ConsentStatus @default(UNKNOWN)
-  consentSource  String?
+  consentSource  String?       @db.VarChar(255)
   consentAt      DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
@@ -440,10 +442,10 @@ model Contact {
 }
 
 model ContactGroup {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @db.Char(36)
   name           String
-  description    String?
+  description    String?   @db.Text
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
@@ -456,8 +458,8 @@ model ContactGroup {
 }
 
 model ContactGroupMember {
-  groupId   String   @db.Uuid
-  contactId String   @db.Uuid
+  groupId   String   @db.Char(36)
+  contactId String   @db.Char(36)
   addedAt   DateTime @default(now())
 
   group   ContactGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
@@ -469,12 +471,12 @@ model ContactGroupMember {
 }
 
 model SuppressionEntry {
-  id             String            @id @default(uuid()) @db.Uuid
-  organizationId String            @db.Uuid
+  id             String            @id @default(uuid()) @db.Char(36)
+  organizationId String            @db.Char(36)
   phone          String
   reason         SuppressionReason
   source         String? // "STOP keyword", "manual", "import"...
-  note           String?
+  note           String?           @db.Text
   createdAt      DateTime          @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -486,19 +488,19 @@ model SuppressionEntry {
 // ─────────────────────────────── Messaging ───────────────────────────────
 
 model SenderId {
-  id              String         @id @default(uuid()) @db.Uuid
-  organizationId  String         @db.Uuid
+  id              String         @id @default(uuid()) @db.Char(36)
+  organizationId  String         @db.Char(36)
   value           String // "YOURBRAND" (masking) or a number (non-masking)
   type            SenderType
   status          SenderIdStatus @default(PENDING)
-  purpose         String?
-  sampleMessage   String?
+  purpose         String?        @db.Text
+  sampleMessage   String?        @db.Text
   documents       Json           @default("[]") // [{ key, name, size, contentType }]
-  rejectionReason String?
-  providerRef     String?
+  rejectionReason String?        @db.Text
+  providerRef     String?        @db.VarChar(255)
   isDefault       Boolean        @default(false)
-  submittedById   String?        @db.Uuid
-  reviewedById    String?        @db.Uuid
+  submittedById   String?        @db.Char(36)
+  reviewedById    String?        @db.Char(36)
   reviewedAt      DateTime?
   approvedAt      DateTime?
   createdAt       DateTime       @default(now())
@@ -513,12 +515,12 @@ model SenderId {
 }
 
 model Template {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String    @db.Uuid
-  name           String
-  body           String
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @db.Char(36)
+  name           String    @db.VarChar(255)
+  body           String    @db.Text
   smsType        SmsType   @default(TRANSACTIONAL)
-  createdById    String?   @db.Uuid
+  createdById    String?   @db.Char(36)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   deletedAt      DateTime?
@@ -531,15 +533,15 @@ model Template {
 }
 
 model Campaign {
-  id                 String         @id @default(uuid()) @db.Uuid
-  organizationId     String         @db.Uuid
-  name               String
+  id                 String         @id @default(uuid()) @db.Char(36)
+  organizationId     String         @db.Char(36)
+  name               String         @db.VarChar(255)
   smsType            SmsType
-  senderIdId         String?        @db.Uuid
+  senderIdId         String?        @db.Char(36)
   senderValue        String
   senderType         SenderType
-  templateId         String?        @db.Uuid
-  message            String
+  templateId         String?        @db.Char(36)
+  message            String         @db.Text
   encoding           SmsEncoding
   segmentsPerMessage Int
   status             CampaignStatus @default(DRAFT)
@@ -559,11 +561,11 @@ model Campaign {
   estimatedCost      Decimal        @default(0) @db.Decimal(14, 4)
   actualCost         Decimal        @default(0) @db.Decimal(14, 4)
   refundedAmount     Decimal        @default(0) @db.Decimal(14, 4)
-  failureReason      String?
-  reviewNote         String?
-  reviewedById       String?        @db.Uuid
+  failureReason      String?        @db.Text
+  reviewNote         String?        @db.Text
+  reviewedById       String?        @db.Char(36)
   reviewedAt         DateTime?
-  createdById        String?        @db.Uuid
+  createdById        String?        @db.Char(36)
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
   deletedAt          DateTime?
@@ -580,13 +582,13 @@ model Campaign {
 }
 
 model CampaignRecipient {
-  id         String          @id @default(uuid()) @db.Uuid
-  campaignId String          @db.Uuid
-  contactId  String?         @db.Uuid
+  id         String          @id @default(uuid()) @db.Char(36)
+  campaignId String          @db.Char(36)
+  contactId  String?         @db.Char(36)
   phone      String
   variables  Json?
   status     RecipientStatus @default(INCLUDED)
-  messageId  String?         @unique @db.Uuid
+  messageId  String?         @unique @db.Char(36)
   createdAt  DateTime        @default(now())
 
   campaign Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -597,27 +599,27 @@ model CampaignRecipient {
 }
 
 model Message {
-  id                String        @id @default(uuid()) @db.Uuid
-  organizationId    String        @db.Uuid
-  campaignId        String?       @db.Uuid
-  apiKeyId          String?       @db.Uuid
+  id                String        @id @default(uuid()) @db.Char(36)
+  organizationId    String        @db.Char(36)
+  campaignId        String?       @db.Char(36)
+  apiKeyId          String?       @db.Char(36)
   source            MessageSource
   to                String // E.164
   operator          String? // prefix-based guess; MNP means this can be wrong
   senderValue       String
   senderType        SenderType
   smsType           SmsType
-  body              String
+  body              String        @db.Text
   encoding          SmsEncoding
   segments          Int
   unitPrice         Decimal       @db.Decimal(14, 4)
   cost              Decimal       @db.Decimal(14, 4)
   status            MessageStatus @default(QUEUED)
   provider          String?
-  providerMessageId String?
-  errorCode         String?
-  errorMessage      String?
-  clientReference   String?
+  providerMessageId String?       @db.VarChar(255)
+  errorCode         String?       @db.VarChar(255)
+  errorMessage      String?       @db.Text
+  clientReference   String?       @db.VarChar(255)
   attempts          Int           @default(0)
   nextAttemptAt     DateTime?     @default(now())
   lockedUntil       DateTime?
@@ -644,13 +646,13 @@ model Message {
 }
 
 model MessageEvent {
-  id             String             @id @default(uuid()) @db.Uuid
-  messageId      String             @db.Uuid
+  id             String             @id @default(uuid()) @db.Char(36)
+  messageId      String             @db.Char(36)
   status         MessageStatus
-  providerStatus String?
-  description    String?
+  providerStatus String?            @db.VarChar(255)
+  description    String?            @db.Text
   source         MessageEventSource
-  dedupeKey      String             @unique
+  dedupeKey      String             @unique @db.VarChar(512)
   payload        Json?
   occurredAt     DateTime
   receivedAt     DateTime           @default(now())
@@ -664,20 +666,20 @@ model MessageEvent {
 // ─────────────────────────────── Developer ───────────────────────────────
 
 model ApiKey {
-  id             String       @id @default(uuid()) @db.Uuid
-  organizationId String       @db.Uuid
-  name           String
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String       @db.Char(36)
+  name           String       @db.VarChar(255)
   prefix         String       @unique // shown in UI, e.g. "sfk_live_a1b2c3d4"
   keyHash        String       @unique // HMAC-SHA256(pepper, fullKey)
-  scopes         String[]
-  ipAllowlist    String[]     @default([])
+  scopes         Json // string[]
+  ipAllowlist    Json         @default("[]") // string[]
   status         ApiKeyStatus @default(ACTIVE)
   lastUsedAt     DateTime?
   lastUsedIp     String?
   expiresAt      DateTime?
-  createdById    String?      @db.Uuid
+  createdById    String?      @db.Char(36)
   revokedAt      DateTime?
-  revokedById    String?      @db.Uuid
+  revokedById    String?      @db.Char(36)
   createdAt      DateTime     @default(now())
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -689,17 +691,17 @@ model ApiKey {
 }
 
 model ApiLog {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String?  @db.Uuid
-  apiKeyId       String?  @db.Uuid
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String?  @db.Char(36)
+  apiKeyId       String?  @db.Char(36)
   requestId      String
   method         String
-  path           String
+  path           String   @db.Text
   statusCode     Int
   durationMs     Int
   errorCode      String?
   ipAddress      String?
-  userAgent      String?
+  userAgent      String?  @db.Text
   createdAt      DateTime @default(now())
 
   organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -711,9 +713,9 @@ model ApiLog {
 }
 
 model IdempotencyKey {
-  id             String   @id @default(uuid()) @db.Uuid
-  organizationId String   @db.Uuid
-  key            String
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @db.Char(36)
+  key            String   @db.VarChar(255)
   requestHash    String
   statusCode     Int?
   response       Json?
@@ -729,12 +731,12 @@ model IdempotencyKey {
 
 /// Customer-configured outbound webhook endpoints (delivery reports, campaign events).
 model WebhookEndpoint {
-  id              String    @id @default(uuid()) @db.Uuid
-  organizationId  String    @db.Uuid
-  url             String
-  description     String?
-  secretEncrypted String // AES-256-GCM; used to sign payloads
-  events          String[]
+  id              String    @id @default(uuid()) @db.Char(36)
+  organizationId  String    @db.Char(36)
+  url             String    @db.Text
+  description     String?   @db.Text
+  secretEncrypted String    @db.Text // AES-256-GCM; used to sign payloads
+  events          Json // string[]
   active          Boolean   @default(true)
   failureCount    Int       @default(0)
   lastDeliveryAt  DateTime?
@@ -750,14 +752,14 @@ model WebhookEndpoint {
 }
 
 model WebhookDelivery {
-  id             String                @id @default(uuid()) @db.Uuid
-  endpointId     String                @db.Uuid
+  id             String                @id @default(uuid()) @db.Char(36)
+  endpointId     String                @db.Char(36)
   event          String
   payload        Json
   status         WebhookDeliveryStatus @default(PENDING)
   attempts       Int                   @default(0)
   responseStatus Int?
-  responseBody   String?
+  responseBody   String?               @db.Text
   nextAttemptAt  DateTime?             @default(now())
   createdAt      DateTime              @default(now())
   updatedAt      DateTime              @updatedAt
@@ -772,14 +774,14 @@ model WebhookDelivery {
 /// Raw inbound provider webhooks (SMS delivery reports, payment callbacks), stored for
 /// idempotency and debugging.
 model InboundWebhookEvent {
-  id             String               @id @default(uuid()) @db.Uuid
+  id             String               @id @default(uuid()) @db.Char(36)
   provider       String
   kind           String // "sms.delivery" | "sms.inbound" | "payment"
-  eventKey       String               @unique
+  eventKey       String               @unique @db.VarChar(512)
   signatureValid Boolean?
   payload        Json
   status         InboundWebhookStatus @default(RECEIVED)
-  error          String?
+  error          String?              @db.Text
   receivedAt     DateTime             @default(now())
   processedAt    DateTime?
 
@@ -790,17 +792,17 @@ model InboundWebhookEvent {
 // ─────────────────────────────── Billing ───────────────────────────────
 
 model PricingPlan {
-  id                      String   @id @default(uuid()) @db.Uuid
+  id                      String   @id @default(uuid()) @db.Char(36)
   key                     String   @unique
   name                    String
-  description             String?
+  description             String?  @db.Text
   minRechargeAmount       Decimal  @db.Decimal(14, 4)
   transactionalNonMasking Decimal  @db.Decimal(10, 4)
   transactionalMasking    Decimal  @db.Decimal(10, 4)
   promotionalNonMasking   Decimal  @db.Decimal(10, 4)
   promotionalMasking      Decimal  @db.Decimal(10, 4)
   senderIdFee             Decimal  @default(0) @db.Decimal(14, 4)
-  features                String[] @default([])
+  features                Json     @default("[]") // string[]
   isCustom                Boolean  @default(false) // "Contact sales" plans
   isPublic                Boolean  @default(true)
   isDefault               Boolean  @default(false)
@@ -816,11 +818,11 @@ model PricingPlan {
 }
 
 model CreditPackage {
-  id           String   @id @default(uuid()) @db.Uuid
+  id           String   @id @default(uuid()) @db.Char(36)
   name         String
   amount       Decimal  @db.Decimal(14, 4) // BDT paid (before VAT)
   bonusPercent Decimal  @default(0) @db.Decimal(5, 2)
-  description  String?
+  description  String?  @db.Text
   active       Boolean  @default(true)
   sortOrder    Int      @default(0)
   createdAt    DateTime @default(now())
@@ -832,8 +834,8 @@ model CreditPackage {
 }
 
 model Wallet {
-  id                   String    @id @default(uuid()) @db.Uuid
-  organizationId       String    @unique @db.Uuid
+  id                   String    @id @default(uuid()) @db.Char(36)
+  organizationId       String    @unique @db.Char(36)
   balance              Decimal   @default(0) @db.Decimal(14, 4)
   currency             String    @default("BDT")
   lowBalanceThreshold  Decimal   @default(100) @db.Decimal(14, 4)
@@ -848,17 +850,17 @@ model Wallet {
 }
 
 model WalletTransaction {
-  id             String         @id @default(uuid()) @db.Uuid
-  walletId       String         @db.Uuid
-  organizationId String         @db.Uuid
+  id             String         @id @default(uuid()) @db.Char(36)
+  walletId       String         @db.Char(36)
+  organizationId String         @db.Char(36)
   type           WalletTxType
   reason         WalletTxReason
   amount         Decimal        @db.Decimal(14, 4) // always positive; type gives direction
   balanceAfter   Decimal        @db.Decimal(14, 4)
-  description    String
+  description    String         @db.Text
   referenceType  String? // "payment" | "campaign" | "message" | "api_request" | "admin"
-  referenceId    String?
-  createdById    String?        @db.Uuid
+  referenceId    String?        @db.VarChar(255)
+  createdById    String?        @db.Char(36)
   createdAt      DateTime       @default(now())
 
   wallet       Wallet       @relation(fields: [walletId], references: [id], onDelete: Cascade)
@@ -870,11 +872,11 @@ model WalletTransaction {
 }
 
 model Payment {
-  id              String        @id @default(uuid()) @db.Uuid
-  organizationId  String        @db.Uuid
+  id              String        @id @default(uuid()) @db.Char(36)
+  organizationId  String        @db.Char(36)
   provider        String // "mock" | "manual" | "sslcommerz" ...
-  providerRef     String? // gateway transaction / validation id
-  packageId       String?       @db.Uuid
+  providerRef     String?       @db.VarChar(255) // gateway transaction / validation id
+  packageId       String?       @db.Char(36)
   amount          Decimal       @db.Decimal(14, 4) // subtotal before VAT
   vatRate         Decimal       @default(0) @db.Decimal(5, 2)
   vatAmount       Decimal       @default(0) @db.Decimal(14, 4)
@@ -882,12 +884,12 @@ model Payment {
   creditAmount    Decimal       @db.Decimal(14, 4) // BDT added to the wallet (amount + bonus)
   currency        String        @default("BDT")
   status          PaymentStatus @default(PENDING)
-  method          String? // human-readable, e.g. "Bank transfer"
-  manualReference String? // customer-submitted reference for manual payments
+  method          String?       @db.VarChar(255) // human-readable, e.g. "Bank transfer"
+  manualReference String?       @db.VarChar(255) // customer-submitted reference for manual payments
   metadata        Json          @default("{}")
-  failureReason   String?
-  initiatedById   String?       @db.Uuid
-  reviewedById    String?       @db.Uuid
+  failureReason   String?       @db.Text
+  initiatedById   String?       @db.Char(36)
+  reviewedById    String?       @db.Char(36)
   completedAt     DateTime?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
@@ -903,9 +905,9 @@ model Payment {
 }
 
 model Invoice {
-  id             String        @id @default(uuid()) @db.Uuid
-  organizationId String        @db.Uuid
-  paymentId      String        @unique @db.Uuid
+  id             String        @id @default(uuid()) @db.Char(36)
+  organizationId String        @db.Char(36)
+  paymentId      String        @unique @db.Char(36)
   number         String        @unique
   subtotal       Decimal       @db.Decimal(14, 4)
   vatRate        Decimal       @db.Decimal(5, 2)
@@ -913,9 +915,9 @@ model Invoice {
   total          Decimal       @db.Decimal(14, 4)
   currency       String        @default("BDT")
   status         InvoiceStatus @default(PAID)
-  billingName    String
-  billingEmail   String?
-  billingAddress String?
+  billingName    String        @db.VarChar(255)
+  billingEmail   String?       @db.VarChar(254)
+  billingAddress String?       @db.Text
   taxId          String?
   lineItems      Json
   issuedAt       DateTime      @default(now())
@@ -931,15 +933,15 @@ model Invoice {
 // ─────────────────────────────── Support ───────────────────────────────
 
 model SupportTicket {
-  id             String         @id @default(uuid()) @db.Uuid
+  id             String         @id @default(uuid()) @db.Char(36)
   number         Int            @unique @default(autoincrement())
-  organizationId String         @db.Uuid
-  subject        String
+  organizationId String         @db.Char(36)
+  subject        String         @db.VarChar(255)
   category       String
   priority       TicketPriority @default(NORMAL)
   status         TicketStatus   @default(OPEN)
-  createdById    String         @db.Uuid
-  assignedToId   String?        @db.Uuid
+  createdById    String         @db.Char(36)
+  assignedToId   String?        @db.Char(36)
   lastReplyAt    DateTime       @default(now())
   closedAt       DateTime?
   createdAt      DateTime       @default(now())
@@ -956,10 +958,10 @@ model SupportTicket {
 }
 
 model SupportMessage {
-  id          String   @id @default(uuid()) @db.Uuid
-  ticketId    String   @db.Uuid
-  authorId    String   @db.Uuid
-  body        String
+  id          String   @id @default(uuid()) @db.Char(36)
+  ticketId    String   @db.Char(36)
+  authorId    String   @db.Char(36)
+  body        String   @db.Text
   isStaff     Boolean  @default(false)
   isInternal  Boolean  @default(false) // staff-only notes, never shown to the customer
   attachments Json     @default("[]")
@@ -975,16 +977,16 @@ model SupportMessage {
 // ─────────────────────────────── Platform ───────────────────────────────
 
 model AuditLog {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String?   @db.Uuid
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String?   @db.Char(36)
   actorType      ActorType
-  actorUserId    String?   @db.Uuid
-  actorApiKeyId  String?   @db.Uuid
+  actorUserId    String?   @db.Char(36)
+  actorApiKeyId  String?   @db.Char(36)
   action         String // e.g. "auth.login", "campaign.launch", "pricing.plan.update"
   targetType     String?
-  targetId       String?
+  targetId       String?   @db.VarChar(255)
   ipAddress      String?
-  userAgent      String?
+  userAgent      String?   @db.Text
   metadata       Json      @default("{}")
   createdAt      DateTime  @default(now())
 
@@ -998,13 +1000,13 @@ model AuditLog {
 }
 
 model Notification {
-  id             String    @id @default(uuid()) @db.Uuid
-  organizationId String?   @db.Uuid
-  userId         String    @db.Uuid
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String?   @db.Char(36)
+  userId         String    @db.Char(36)
   type           String // "campaign.completed" | "payment.succeeded" | ...
-  title          String
-  body           String
-  link           String?
+  title          String    @db.VarChar(255)
+  body           String    @db.Text
+  link           String?   @db.VarChar(500)
   readAt         DateTime?
   createdAt      DateTime  @default(now())
 
@@ -1016,8 +1018,8 @@ model Notification {
 }
 
 model NotificationPreference {
-  id     String  @id @default(uuid()) @db.Uuid
-  userId String  @db.Uuid
+  id     String  @id @default(uuid()) @db.Char(36)
+  userId String  @db.Char(36)
   type   String
   inApp  Boolean @default(true)
   email  Boolean @default(true)
@@ -1034,18 +1036,27 @@ model Setting {
   key         String   @id
   value       Json
   isSecret    Boolean  @default(false)
-  updatedById String?  @db.Uuid
+  updatedById String?  @db.Char(36)
   updatedAt   DateTime @updatedAt
 
   @@map("settings")
 }
 
+/// Named, gap-free counters (MySQL has no sequences). "invoice_number" numbers invoices.
+/// Incremented inside the caller's transaction, see services/billing/payments.ts.
+model Counter {
+  name  String @id @db.VarChar(64)
+  value BigInt
+
+  @@map("counters")
+}
+
 model BlocklistEntry {
-  id          String        @id @default(uuid()) @db.Uuid
+  id          String        @id @default(uuid()) @db.Char(36)
   type        BlocklistType
   value       String
-  reason      String?
-  createdById String?       @db.Uuid
+  reason      String?       @db.Text
+  createdById String?       @db.Char(36)
   createdAt   DateTime      @default(now())
 
   @@unique([type, value])
@@ -1053,18 +1064,18 @@ model BlocklistEntry {
 }
 
 model AbuseReport {
-  id             String            @id @default(uuid()) @db.Uuid
-  reporterName   String?
-  reporterEmail  String?
+  id             String            @id @default(uuid()) @db.Char(36)
+  reporterName   String?           @db.VarChar(255)
+  reporterEmail  String?           @db.VarChar(254)
   reporterPhone  String?
   senderValue    String
-  messageContent String
+  messageContent String            @db.Text
   receivedAt     DateTime?
-  description    String?
+  description    String?           @db.Text
   status         AbuseReportStatus @default(NEW)
-  organizationId String?           @db.Uuid // matched sender, if any
-  resolutionNote String?
-  handledById    String?           @db.Uuid
+  organizationId String?           @db.Char(36) // matched sender, if any
+  resolutionNote String?           @db.Text
+  handledById    String?           @db.Char(36)
   ipAddress      String?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -1075,13 +1086,13 @@ model AbuseReport {
 
 /// Contact / sales form submissions from the public website.
 model ContactRequest {
-  id        String     @id @default(uuid()) @db.Uuid
-  name      String
-  company   String?
-  email     String
+  id        String     @id @default(uuid()) @db.Char(36)
+  name      String     @db.VarChar(255)
+  company   String?    @db.VarChar(255)
+  email     String     @db.VarChar(254)
   phone     String?
-  subject   String
-  message   String
+  subject   String     @db.VarChar(255)
+  message   String     @db.Text
   status    LeadStatus @default(NEW)
   ipAddress String?
   createdAt DateTime   @default(now())

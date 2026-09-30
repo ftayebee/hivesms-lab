@@ -27,7 +27,7 @@
                                 │                        │
                                 ▼                        ▼
                           ┌───────────┐          ┌─────────────────────────────┐
-                          │ PostgreSQL│ ◄─────── │ Worker process (scripts/     │
+                          │ MySQL /   │ ◄─────── │ Worker process (scripts/     │
                           │ (Prisma)  │          │ worker.ts): scheduled        │
                           └───────────┘          │ campaigns, send queue,       │
                                                  │ retries, outbound webhooks,  │
@@ -39,7 +39,8 @@
 pricing, segmentation and authorization code. Splitting into a separate backend would duplicate
 that logic without a clear benefit at this stage. Long-running work (campaign fan-out, retries,
 webhook delivery) does not belong in a request, so it runs in a separate worker process that
-imports the same services. The queue is PostgreSQL-backed (`FOR UPDATE SKIP LOCKED`), so no
+imports the same services. The queue is database-backed (row locks plus a lease column; see
+`services/messaging/dispatcher.ts`), so no
 Redis is required to start. The queue functions sit behind one module, so a dedicated broker can
 replace them later.
 
@@ -49,12 +50,11 @@ replace them later.
 .
 ├── docs/                         Product, architecture, design system, deployment, provider guides
 ├── prisma/
-│   ├── schema.prisma             Relational schema (PostgreSQL)
+│   ├── schema.prisma             Relational schema (MySQL 8+ / MariaDB 10.4+)
 │   ├── migrations/               SQL migrations (prisma migrate)
 │   └── seed.ts                   Fictional demo data
 ├── prisma.config.ts
 ├── scripts/
-│   ├── local-db.mjs              Embedded PostgreSQL for local development (no Docker needed)
 │   └── worker.ts                 Background worker entry point
 ├── tests/
 │   ├── unit/                     Vitest: segmentation, phone, pricing, permissions, adapters...

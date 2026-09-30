@@ -27,7 +27,7 @@ FROM base AS build
 ARG APP_URL=http://localhost:3000
 ENV APP_URL=${APP_URL}
 # Only needed so prisma.config.ts can load during `prisma generate`; never used to connect.
-ENV DATABASE_URL=postgresql://build:build@localhost:5432/build
+ENV DATABASE_URL=mysql://build:build@localhost:3306/build
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

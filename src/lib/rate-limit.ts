@@ -2,7 +2,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
 /**
- * Fixed-window rate limiter backed by PostgreSQL (atomic upsert), so limits hold across
+ * Fixed-window rate limiter backed by the database (atomic upsert), so limits hold across
  * multiple app instances without extra infrastructure. The interface is intentionally small
  * so a Redis implementation can replace it later.
  */
@@ -27,11 +27,15 @@ export async function rateLimit(key: string, rule: RateLimitRule): Promise<RateL
   const windowStart = new Date(Math.floor(nowMs / windowMs) * windowMs);
   const expiresAt = new Date(windowStart.getTime() + windowMs);
   try {
-    const rows = await db.$queryRaw<{ count: number }[]>`
-      INSERT INTO rate_limit_buckets (key, "windowStart", count, "expiresAt")
-      VALUES (${key}, ${windowStart}, 1, ${expiresAt})
-      ON CONFLICT (key, "windowStart") DO UPDATE SET count = rate_limit_buckets.count + 1
-      RETURNING count`;
+    // Upsert and read back in one transaction: the upsert row-locks the bucket, so the count
+    // read is exactly ours (MySQL has no INSERT ... RETURNING).
+    const rows = await db.$transaction(async (tx) => {
+      await tx.$executeRaw`
+        INSERT INTO rate_limit_buckets (\`key\`, windowStart, \`count\`, expiresAt)
+        VALUES (${key}, ${windowStart}, 1, ${expiresAt})
+        ON DUPLICATE KEY UPDATE \`count\` = \`count\` + 1`;
+      return tx.$queryRaw<{ count: number }[]>`SELECT \`count\` FROM rate_limit_buckets WHERE \`key\` = ${key} AND windowStart = ${windowStart}`;
+    });
     const count = Number(rows[0]?.count ?? 1);
     return {
       allowed: count <= rule.limit,

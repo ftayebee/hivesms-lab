@@ -1,4 +1,5 @@
-import { db } from "@/lib/db";
+import { Prisma } from "@/generated/prisma/client";
+import { db, withTransactionRetry } from "@/lib/db";
 import { logger, maskPhone } from "@/lib/logger";
 import { getSmsProvider, type SmsProvider } from "@/services/sms";
 import { getSmsPolicy } from "@/services/settings";
@@ -7,32 +8,62 @@ import { applyStatusUpdate } from "./delivery";
 /**
  * Sends queued messages to the upstream provider.
  *
- * Claiming uses `FOR UPDATE SKIP LOCKED` plus a short lease (lockedUntil), so several worker
- * processes can run safely in parallel and a crashed worker's messages become claimable again
- * after the lease expires. Messages of paused or cancelled campaigns are never claimed.
+ * Claiming: a non-locking read picks due candidates, then a short transaction row-locks them by
+ * primary key (`FOR UPDATE`), re-checks that they are still claimable and sets a lease
+ * (lockedUntil). A concurrent worker waits for those rows, re-reads them, sees the lease and
+ * skips them, so several workers (or overlapping cron ticks) never claim the same message. A
+ * crashed worker's messages become claimable again after the lease expires. Messages of paused
+ * or cancelled campaigns are never claimed.
+ *
+ * Portable to MySQL 8+ and MariaDB 10.4+ (no SKIP LOCKED, which needs MariaDB 10.6+, and no
+ * UPDATE ... RETURNING). Locking only by primary key, in id order, matches the order used by
+ * status updates (message row first), which avoids InnoDB deadlocks on secondary indexes.
  */
 const LEASE_SECONDS = 120;
 
 export async function claimQueuedMessages(limit: number, ids?: string[]): Promise<string[]> {
-  const idFilter = ids?.length ? ids : null;
-  const rows = await db.$queryRaw<{ id: string }[]>`
-    UPDATE messages SET "lockedUntil" = now() + make_interval(secs => ${LEASE_SECONDS}), attempts = attempts + 1
-    WHERE id IN (
+  if (ids && !ids.length) return [];
+  const due = (now: Date) => Prisma.sql`m.status = 'QUEUED' AND m.nextAttemptAt <= ${now} AND (m.lockedUntil IS NULL OR m.lockedUntil < ${now})`;
+  const idFilter = ids?.length ? Prisma.sql`AND m.id IN (${Prisma.join(ids)})` : Prisma.empty;
+  const claimed: string[] = [];
+  // Candidates taken by a concurrent claimer are lost at the lock step; read fresh candidates
+  // (those are now leased and excluded) a few times so a batch is not cut short by contention.
+  for (let round = 0; round < 4 && claimed.length < limit; round++) {
+    const candidates = await db.$queryRaw<{ id: string }[]>`
       SELECT m.id FROM messages m
-      LEFT JOIN campaigns c ON c.id = m."campaignId"
-      JOIN organizations o ON o.id = m."organizationId"
-      WHERE m.status = 'QUEUED'
-        AND m."nextAttemptAt" <= now()
-        AND (m."lockedUntil" IS NULL OR m."lockedUntil" < now())
-        AND (m."campaignId" IS NULL OR c.status = 'PROCESSING')
-        AND o.status = 'ACTIVE'
-        AND (${idFilter}::uuid[] IS NULL OR m.id = ANY(${idFilter}::uuid[]))
-      ORDER BY m."nextAttemptAt"
-      LIMIT ${limit}
-      FOR UPDATE OF m SKIP LOCKED
-    )
-    RETURNING id`;
-  return rows.map((r) => r.id);
+      WHERE ${due(new Date())}
+        AND (m.campaignId IS NULL OR EXISTS (SELECT 1 FROM campaigns c WHERE c.id = m.campaignId AND c.status = 'PROCESSING'))
+        AND EXISTS (SELECT 1 FROM organizations o WHERE o.id = m.organizationId AND o.status = 'ACTIVE')
+        ${idFilter}
+      ORDER BY m.nextAttemptAt LIMIT ${limit - claimed.length}`;
+    if (!candidates.length) break;
+    const got = await leaseMessages(
+      candidates.map((r) => r.id),
+      due,
+    );
+    claimed.push(...got);
+    if (got.length === candidates.length) break;
+  }
+  return claimed;
+}
+
+/** Row-locks the candidates by primary key (id order), keeps those still due and leases them. */
+function leaseMessages(candidateIds: string[], due: (now: Date) => Prisma.Sql): Promise<string[]> {
+  const ids = [...candidateIds].sort();
+  return withTransactionRetry(() =>
+    db.$transaction(async (tx) => {
+      const now = new Date();
+      // Locks only message rows; campaign/organization rows are not locked (as with PostgreSQL's FOR UPDATE OF m).
+      const rows = await tx.$queryRaw<{ id: string }[]>`
+        SELECT m.id FROM messages m WHERE m.id IN (${Prisma.join(ids)}) AND ${due(now)} ORDER BY m.id FOR UPDATE`;
+      const leased = rows.map((r) => r.id);
+      if (leased.length) {
+        const leaseUntil = new Date(now.getTime() + LEASE_SECONDS * 1000);
+        await tx.$executeRaw`UPDATE messages SET lockedUntil = ${leaseUntil}, attempts = attempts + 1 WHERE id IN (${Prisma.join(leased)})`;
+      }
+      return leased;
+    }),
+  );
 }
 
 function backoffMs(attempt: number) {
