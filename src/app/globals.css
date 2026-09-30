@@ -1,26 +1,218 @@
 @import "tailwindcss";
 
+/*
+ * SMSFlow BD design tokens (see docs/03-design-system.md).
+ * Rebrand by editing these variables. Components only use semantic tokens.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --surface: #f6f8fb;
+  --card: #ffffff;
+  --card-foreground: #0e1a36;
+  --foreground: #0e1a36;
+  --muted: #eef2f7;
+  --muted-foreground: #52607a;
+  --border: #e2e7ef;
+  --input: #d5dce7;
+  --primary: #1e3fa8;
+  --primary-hover: #19368f;
+  --primary-foreground: #ffffff;
+  --primary-soft: #eaf0ff;
+  --accent: #0b8a83;
+  --accent-soft: #e3f6f4;
+  --accent-foreground: #ffffff;
+  --success: #15803d;
+  --success-soft: #e8f6ed;
+  --warning: #b45309;
+  --warning-soft: #fdf3e2;
+  --destructive: #c0262d;
+  --destructive-soft: #fdecec;
+  --destructive-foreground: #ffffff;
+  --ring: #1e3fa8;
+  /* Chart palette: validated (OKLCH band, chroma floor, CVD separation) for the light surface */
+  --chart-1: #2f55c8;
+  --chart-2: #0a968a;
+  --chart-3: #d97706;
+  --chart-4: #c2415d;
+  --chart-5: #8a63d8;
+  --viz-delivered: #16a061;
+  --viz-pending: #2f55c8;
+  --viz-failed: #d4413b;
+  --shadow-color: 14 26 54;
+  --code-bg: #0e1a36;
+  --code-foreground: #e7ecf6;
+}
+
+.dark {
+  --background: #0a0f1e;
+  --surface: #0f162a;
+  --card: #121a31;
+  --card-foreground: #e7ecf6;
+  --foreground: #e7ecf6;
+  --muted: #18213b;
+  --muted-foreground: #95a2be;
+  --border: #223055;
+  --input: #2b3a63;
+  --primary: #7892ff;
+  --primary-hover: #93a7ff;
+  --primary-foreground: #0a0f1e;
+  --primary-soft: #1a2550;
+  --accent: #2cc7b8;
+  --accent-soft: #0f2f33;
+  --accent-foreground: #0a0f1e;
+  --success: #4ade80;
+  --success-soft: #0f2a1c;
+  --warning: #fbbf24;
+  --warning-soft: #2e2410;
+  --destructive: #f87171;
+  --destructive-soft: #341418;
+  --destructive-foreground: #0a0f1e;
+  --ring: #7892ff;
+  /* Chart palette stepped for the dark surface (validated separately) */
+  --chart-1: #5a79ec;
+  --chart-2: #18a093;
+  --chart-3: #c98500;
+  --chart-4: #d55181;
+  --chart-5: #8e6fe0;
+  --viz-delivered: #2aa86c;
+  --viz-pending: #5a79ec;
+  --viz-failed: #e0574f;
+  --shadow-color: 0 0 0;
+  --code-bg: #070b16;
+  --code-foreground: #e7ecf6;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-destructive: var(--destructive);
+  --color-destructive-soft: var(--destructive-soft);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-ring: var(--ring);
+  --color-code: var(--code-bg);
+  --color-code-foreground: var(--code-foreground);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --font-sans: var(--font-geist-sans), var(--font-bangla), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  --shadow-xs: 0 1px 2px rgb(var(--shadow-color) / 0.05);
+  --shadow-sm: 0 1px 3px rgb(var(--shadow-color) / 0.06), 0 1px 2px rgb(var(--shadow-color) / 0.04);
+  --shadow-md: 0 8px 24px -8px rgb(var(--shadow-color) / 0.14);
+  --shadow-lg: 0 24px 48px -12px rgb(var(--shadow-color) / 0.18);
+
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-fade-in: fade-in 160ms ease-out;
+  --animate-slide-in: slide-in 200ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@keyframes shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slide-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-padding-top: 5rem;
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-feature-settings: "cv11", "ss01";
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  ::selection {
+    background: var(--primary-soft);
+  }
+  [lang="bn"] body,
+  .font-bangla {
+    font-family: var(--font-bangla), var(--font-geist-sans), sans-serif;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Numbers in tables and metrics */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--muted) 25%, color-mix(in oklab, var(--muted) 60%, var(--background)) 50%, var(--muted) 75%);
+  background-size: 200% 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .skeleton {
+    animation: var(--animate-shimmer);
+  }
+}
+
+/* Prose for legal and docs pages */
+.prose-doc {
+  max-width: 72ch;
+  line-height: 1.7;
+}
+.prose-doc :where(h2):not(:where(.not-prose, .not-prose *)) { font-size: 1.375rem; font-weight: 650; margin: 2.25rem 0 0.75rem; letter-spacing: -0.01em; scroll-margin-top: 6rem; }
+.prose-doc :where(h3):not(:where(.not-prose, .not-prose *)) { font-size: 1.0625rem; font-weight: 650; margin: 1.75rem 0 0.5rem; scroll-margin-top: 6rem; }
+.prose-doc :where(p):not(:where(.not-prose, .not-prose *)) { margin: 0.75rem 0; color: var(--foreground); }
+.prose-doc :where(ul):not(:where(.not-prose, .not-prose *)) { list-style: disc; padding-left: 1.25rem; margin: 0.75rem 0; }
+.prose-doc :where(ol):not(:where(.not-prose, .not-prose *)) { list-style: decimal; padding-left: 1.25rem; margin: 0.75rem 0; }
+.prose-doc :where(li):not(:where(.not-prose, .not-prose *)) { margin: 0.25rem 0; }
+.prose-doc :where(a):not(:where(.not-prose, .not-prose *)) { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
+.prose-doc :where(code:not(pre code)):not(:where(.not-prose, .not-prose *)) { font-family: var(--font-mono); font-size: 0.85em; background: var(--muted); padding: 0.1em 0.35em; border-radius: 4px; }
+.prose-doc :where(table):not(:where(.not-prose, .not-prose *)) { display: block; overflow-x: auto; width: 100%; font-size: 0.875rem; border-collapse: collapse; margin: 1rem 0; }
+.prose-doc :where(th):not(:where(.not-prose, .not-prose *)) { text-align: left; font-weight: 600; padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); background: var(--surface); }
+.prose-doc :where(td):not(:where(.not-prose, .not-prose *)) { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

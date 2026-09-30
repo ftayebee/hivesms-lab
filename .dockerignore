@@ -1,0 +1,17 @@
+node_modules
+.next
+.local
+.git
+.env
+.env.*
+!.env.example
+coverage
+playwright-report
+test-results
+blob-report
+.claude
+.agents
+*.log
+Dockerfile
+docker-compose*.yml
+src/generated

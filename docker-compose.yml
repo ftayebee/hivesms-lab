@@ -1,0 +1,74 @@
+# Single-host deployment: PostgreSQL, a one-shot migration job, the web app and the worker.
+#
+#   cp .env.example .env.production   # fill in real secrets (see docs/04-deployment.md)
+#   docker compose --env-file .env.production up -d --build
+#
+# Put a TLS-terminating reverse proxy (Caddy, nginx, a cloud load balancer) in front of
+# `web`; the app sets HSTS and secure cookies and expects HTTPS in production.
+
+name: smsflow
+
+x-app-env: &app-env
+  env_file: .env.production
+  environment:
+    DATABASE_URL: postgresql://${POSTGRES_USER:-smsflow}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-smsflow}?schema=public
+    LOCAL_DATA_DIR: /app/data
+    # The dedicated worker service runs background jobs; keep them out of the web process.
+    WORKER_IN_PROCESS: "false"
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-smsflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-smsflow}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C.UTF-8
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    # Not published to the host. Use `docker compose exec db psql ...` for access.
+
+  migrate:
+    build: { context: ., target: tools, args: { APP_URL: "${APP_URL:?set APP_URL}" } }
+    image: smsflow-tools
+    <<: *app-env
+    # Applies migrations, then the idempotent bootstrap (permissions, example pricing, optional first admin).
+    command: ["sh", "-c", "npx prisma migrate deploy && npm run db:bootstrap"]
+    depends_on:
+      db: { condition: service_healthy }
+    restart: "no"
+
+  web:
+    build: { context: ., target: web, args: { APP_URL: "${APP_URL:?set APP_URL}" } }
+    image: smsflow-web
+    <<: *app-env
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - appdata:/app/data
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    build: { context: ., target: tools, args: { APP_URL: "${APP_URL:?set APP_URL}" } }
+    image: smsflow-tools
+    <<: *app-env
+    restart: unless-stopped
+    stop_grace_period: 30s
+    volumes:
+      - appdata:/app/data
+    depends_on:
+      db: { condition: service_healthy }
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:
+  appdata:
