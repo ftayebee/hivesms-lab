@@ -98,7 +98,7 @@ src/features/       domain modules (service + actions + components per feature)
 src/services/       messaging pipeline, billing, and provider abstractions (sms, payments, email, storage)
 src/lib/            auth, API handler, crypto, rate limiting, phone/segment/money utilities
 src/components/     UI kit and shared, marketing, dashboard and admin components
-prisma/             schema, migrations (MySQL), archived PostgreSQL migrations, demo seed
+prisma/             schema, migrations (MySQL), demo seed
 scripts/            worker, bootstrap, standalone start, local-DB guard
 tests/              unit, integration, e2e, support
 docs/               product analysis, architecture, design system, deployment, integrations,

@@ -39,9 +39,21 @@ function createClient() {
   return new PrismaClient({ adapter: new PrismaMariaDb(poolConfigFromUrl(connectionString)) });
 }
 
-export const db: PrismaClient = globalForPrisma.prisma ?? createClient();
+function getClient(): PrismaClient {
+  return (globalForPrisma.prisma ??= createClient());
+}
 
-if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;
+/**
+ * Created on first use, not on import: `next build` imports every route module while collecting
+ * page data, and the build must not require DATABASE_URL or a reachable database.
+ */
+export const db: PrismaClient = new Proxy({} as PrismaClient, {
+  get(_target, prop) {
+    const client = getClient();
+    const value = Reflect.get(client, prop, client);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+});
 
 /** InnoDB deadlock (1213) or lock wait timeout (1205): the transaction was rolled back and can be retried. */
 export function isRetryableTransactionError(err: unknown): boolean {

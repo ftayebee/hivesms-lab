@@ -1,5 +1,6 @@
 import { ZodError } from "zod";
 import { isAppError } from "@/lib/errors";
+import { isDatabaseUnavailable } from "@/lib/db-errors";
 import { logger } from "@/lib/logger";
 
 /**
@@ -45,6 +46,7 @@ function actionErrorInner(err: unknown): ActionResult<never> {
   // Next.js uses thrown errors for redirect()/notFound(); let those propagate.
   if (err && typeof err === "object" && "digest" in err && String((err as { digest: unknown }).digest).startsWith("NEXT_")) throw err;
   logger.error({ err }, "server action failed");
+  if (isDatabaseUnavailable(err)) return { ok: false, error: "The service is temporarily unavailable. Please try again shortly." };
   return { ok: false, error: "Something went wrong. Please try again." };
 }
 

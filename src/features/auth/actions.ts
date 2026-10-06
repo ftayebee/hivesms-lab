@@ -8,6 +8,7 @@ import { endSession, getRequestMeta, getSession, requireSession, startSession, s
 import { defaultOrganizationFor } from "@/lib/auth/session-store";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
+import { logger } from "@/lib/logger";
 import { audit } from "@/lib/audit";
 import { isLocale, LOCALE_COOKIE } from "@/i18n";
 import { createOrganizationWithOwner, ensurePermissionCatalogue } from "@/features/organizations/provision";
@@ -52,7 +53,12 @@ export async function registerAction(_prev: unknown, formData: FormData): Promis
     const input = registerSchema.parse({ ...raw, acceptTerms: raw.acceptTerms === true });
     const meta = await getRequestMeta();
     const { userId, organizationId } = await registerAccount(input, meta);
-    await startSession(userId, organizationId, false);
+    try {
+      await startSession(userId, organizationId, false);
+    } catch (err) {
+      logger.error({ err }, "registration succeeded but session could not be started");
+      return { ok: false, error: "Your account was created, but we couldn't sign you in. Please sign in to continue.", code: "SESSION_FAILED" };
+    }
   } catch (err) {
     return actionError(err, formToObject(formData));
   }

@@ -7,6 +7,9 @@ import { runHousekeeping, runWorkerTick } from "@/services/messaging/worker";
  * processes (e.g. Hostinger Business web hosting), call this from a cron job every minute with
  * "Authorization: Bearer <CRON_SECRET>". WORKER_TICK_BUDGET_MS (default 45s) bounds the time
  * spent claiming new batches; overlapping ticks are safe because claims are atomic.
+ *
+ * GET is accepted too, for schedulers that only issue GET requests (Vercel Cron sends
+ * "Authorization: Bearer <CRON_SECRET>" automatically when CRON_SECRET is set).
  */
 export async function POST(req: NextRequest) {
   const secret = process.env.CRON_SECRET ?? "";
@@ -16,3 +19,5 @@ export async function POST(req: NextRequest) {
   await runHousekeeping();
   return Response.json({ ok: true, ...summary });
 }
+
+export const GET = POST;
