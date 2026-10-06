@@ -8,7 +8,7 @@ Next.js + Prisma 7 + MySQL 8.0+ / MariaDB 10.4+ on Vercel. The database is a rem
 ```
 npm install          (Vercel install step, devDependencies included)
   └─ postinstall: prisma generate      → src/generated/prisma (no database connection)
-npm run build        = prisma generate && next build
+npm run build        = prisma generate && next build --webpack   (see "Why Webpack" below)
 ```
 
 - `prisma generate` and `next build` **do not need a database**. `prisma.config.ts` reads
@@ -20,6 +20,16 @@ npm run build        = prisma generate && next build
 - Prisma runs through the `@prisma/adapter-mariadb` driver adapter (no query-engine binary), in the
   Node.js runtime. `src/proxy.ts` does not touch the database.
 
+### Why Webpack for production builds
+
+`next dev` uses Turbopack; `next build` uses Webpack (`--webpack`). Turbopack runs PostCSS/Tailwind
+for `globals.css` in child Node processes that connect back to the build over a 127.0.0.1 TCP
+socket. Build runners that block loopback connections (seen on Hostinger) make those workers exit
+with status 0 before connecting, failing the build. Turbopack's in-process alternative
+(`experimental.turbopackPluginRuntimeStrategy: "workerThreads"`) built the app but crashed the
+process on exit (segfault, exit 139) on Node 24 with Next 16.3.8, so it is not used. Webpack runs
+PostCSS in-process and produces the same CSS. Revisit when a stable Next release fixes either path.
+
 ## 1. Vercel project settings
 
 | Setting | Value |
@@ -27,7 +37,7 @@ npm run build        = prisma generate && next build
 | Framework preset | Next.js |
 | Install command | default (`npm install`) |
 | Build command | default (`npm run build`) |
-| Node.js version | 22.x or 24.x |
+| Node.js version | 24.x |
 
 ## 2. Environment variables (Project → Settings → Environment Variables)
 
