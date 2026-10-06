@@ -1,0 +1,13 @@
+# Only needed when the web server's document root is this project folder instead of public/
+# (shared hosting that cannot point a (sub)domain at public/). Every request is served from
+# public/, so .env, storage/ (logs), vendor/, config/, database/ and source files can never be
+# fetched or executed directly. If the document root already is public/, this file is ignored.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^(.*)$ public/$1 [L,QSA]
+</IfModule>
+
+# Fallback when mod_rewrite is unavailable: refuse everything rather than expose files.
+<IfModule !mod_rewrite.c>
+    Require all denied
+</IfModule>
