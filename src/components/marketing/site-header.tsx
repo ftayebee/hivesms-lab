@@ -8,7 +8,6 @@ import { ChevronDown, Menu } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
 import { Button } from "@/components/ui/button";
 import { SheetContent } from "@/components/ui/dialog";
-import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { mainNav, type NavLink } from "@/config/navigation";
 import { getMessages } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -78,7 +77,6 @@ export function SiteHeader() {
           </NM.Root>
 
           <div className="ml-auto hidden items-center gap-2 lg:flex">
-            <ThemeToggle />
             <Button asChild variant="ghost">
               <Link href="/login">{t.nav.login}</Link>
             </Button>

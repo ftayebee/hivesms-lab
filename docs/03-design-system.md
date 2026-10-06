@@ -9,6 +9,9 @@ All tokens are CSS variables in `src/app/globals.css`, exposed to Tailwind v4 th
 
 ## Colour
 
+> **Light theme only.** The dark theme and theme toggle were removed (October 2026); the app always
+> renders the light tokens (`color-scheme: light`). The "Dark" columns below are kept for reference only.
+
 | Token | Light | Dark | Use |
 | --- | --- | --- | --- |
 | `--background` | `#FFFFFF` | `#0A0F1E` | Page |
@@ -95,7 +98,6 @@ One documented rule, applied everywhere:
 | `--shadow-md` | `0 8px 24px -8px rgb(14 26 54 / .14)` | Popovers, dropdowns |
 | `--shadow-lg` | `0 24px 48px -12px rgb(14 26 54 / .18)` | Dialogs, hero preview |
 
-In dark mode, borders carry the elevation and shadows are reduced.
 
 ## Motion
 

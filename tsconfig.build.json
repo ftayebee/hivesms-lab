@@ -8,6 +8,7 @@
     "test-results",
     "tests",
     "vitest.config.mts",
-    "playwright.config.ts"
+    "playwright.config.ts",
+    "backend"
   ]
 }

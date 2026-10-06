@@ -26,7 +26,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
-import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { SheetContent } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { platformCan, type PlatformPermission, type PlatformRoleKey } from "@/lib/auth/permissions";
@@ -111,7 +110,6 @@ export function AdminShell({ user, role, badges, children }: { user: { name: str
             Signed in as <span className="font-medium text-foreground">{user.name}</span> · {role.replace("_", " ").toLowerCase()}
           </p>
           <div className="ml-auto flex items-center gap-1">
-            <ThemeToggle />
             <button type="button" onClick={() => start(() => logoutAction())} className="flex h-9 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
               <LogOut className="size-4" aria-hidden /> Sign out
             </button>

@@ -41,6 +41,7 @@
     ".local",
     ".agents",
     "playwright-report",
-    "test-results"
+    "test-results",
+    "backend"
   ]
 }
