@@ -1,0 +1,304 @@
+openapi: 3.1.0
+info:
+  title: SMSFlow BD — SMS API
+  version: "1.0"
+  description: |
+    Send transactional and promotional SMS to Bangladesh mobile numbers, check delivery and balance.
+
+    **Authentication:** `Authorization: Bearer sfk_live_…` (create keys in Dashboard → Developers).
+    Keys carry scopes (`sms:send`, `messages:read`, `balance:read`, `sender_ids:read`) and an optional
+    IP allowlist. Keys are shown once; we store only a keyed hash.
+
+    **Envelope:** every response is `{"success": true, "data": …, "meta": {"requestId": "req_…"}}` or
+    `{"success": false, "error": {"code", "message", "details"?}, "meta": {"requestId"}}`. Quote the
+    `requestId` (also in the `X-Request-Id` header) when contacting support.
+
+    **Numbers:** Bangladesh mobile numbers in any common form (`01712345678`, `8801712345678`,
+    `+8801712345678`, `+880 1712-345678`) — normalised to E.164 (`+8801712345678`).
+
+    **Billing:** price = segments × rate (BDT, by message type and sender type). GSM-7 messages are
+    160 characters (153 per part when longer); any character outside GSM-7 (e.g. Bangla, emoji)
+    switches to UCS-2: 70 characters (67 per part). Messages are charged when accepted; failed,
+    rejected and cancelled messages are refunded automatically.
+
+    **Idempotency:** send `Idempotency-Key: <unique value>` on POST /sms/send and /sms/bulk. Retrying
+    with the same key and body returns the original response (header `Idempotent-Replayed: true`)
+    without charging or sending again, for 24 hours. The same key with a different body → 409
+    `IDEMPOTENCY_CONFLICT`. Failed requests do not consume the key.
+
+    **Rate limits:** 120 send requests/minute and 600 requests/minute per key (headers
+    `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`; 429 with `Retry-After`).
+servers:
+  - url: https://smsbackend.hivelabsbd.com/api/v1
+security:
+  - apiKey: []
+paths:
+  /sms/send:
+    post:
+      summary: Send one SMS
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [to, message]
+              properties:
+                to: { type: string, maxLength: 32, example: "01712345678" }
+                message: { type: string, minLength: 1, maxLength: 3000, example: "Your OTP is 482910" }
+                sender_id: { type: string, maxLength: 20, description: "An approved sender ID of your account; default sender if omitted" }
+                type: { type: string, enum: [transactional, promotional], default: transactional }
+                reference: { type: string, maxLength: 100, description: "Your reference, returned in reports and webhooks" }
+                schedule_at: { type: string, format: date-time, description: "ISO 8601 with offset, up to 30 days ahead", example: "2026-10-08T10:00:00+06:00" }
+      responses:
+        "202":
+          description: Accepted, charged and queued
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Ok"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          message_id: { type: string, format: uuid }
+                          to: { type: string, example: "+8801712345678" }
+                          status: { type: string, enum: [queued] }
+                          segments: { type: integer, example: 1 }
+                          encoding: { type: string, enum: [GSM7, UCS2] }
+                          cost: { type: string, example: "0.40" }
+                          currency: { type: string, example: BDT }
+                          scheduled_for: { type: [string, "null"], format: date-time }
+        "401": { $ref: "#/components/responses/Error" }
+        "402": { $ref: "#/components/responses/Error" }
+        "403": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+        "429": { $ref: "#/components/responses/Error" }
+  /sms/bulk:
+    post:
+      summary: Send to up to 1,000 recipients
+      description: Invalid, blocked or opted-out recipients are reported in `errors`; the rest are charged once and queued.
+      parameters: [{ $ref: "#/components/parameters/IdempotencyKey" }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [recipients, message]
+              properties:
+                recipients:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items:
+                    oneOf:
+                      - { type: string, example: "01712345678" }
+                      - type: object
+                        additionalProperties: false
+                        required: [to]
+                        properties:
+                          to: { type: string }
+                          message: { type: string, description: "Overrides the shared message" }
+                          variables: { type: object, additionalProperties: { type: string }, description: "Fills {{placeholders}}" }
+                message: { type: string, example: "Hi {{name}}, your order shipped." }
+                sender_id: { type: string }
+                type: { type: string, enum: [transactional, promotional] }
+                reference: { type: string }
+                schedule_at: { type: string, format: date-time }
+      responses:
+        "202":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Ok"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          batch_id: { type: string, format: uuid }
+                          accepted: { type: integer }
+                          rejected: { type: integer }
+                          total_segments: { type: integer }
+                          total_cost: { type: string }
+                          currency: { type: string }
+                          scheduled_for: { type: [string, "null"] }
+                          messages:
+                            type: array
+                            items: { type: object, properties: { message_id: { type: string }, to: { type: string }, status: { type: string }, segments: { type: integer }, cost: { type: string } } }
+                          errors:
+                            type: array
+                            items: { type: object, properties: { to: { type: string }, code: { type: string }, message: { type: string } } }
+        "402": { $ref: "#/components/responses/Error" }
+        "422": { $ref: "#/components/responses/Error" }
+  /sms/estimate:
+    post:
+      summary: Segments and cost for a message (nothing is sent or charged)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string }
+                recipients: { type: integer, default: 1, maximum: 1000000 }
+                sender_id: { type: string }
+                type: { type: string, enum: [transactional, promotional] }
+      responses:
+        "200":
+          description: Estimate
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Ok"
+                  - properties:
+                      data:
+                        type: object
+                        properties:
+                          encoding: { type: string }
+                          characters: { type: integer }
+                          units: { type: integer }
+                          segments: { type: integer }
+                          max_segments: { type: integer }
+                          exceeds_max: { type: boolean }
+                          recipients: { type: integer }
+                          sender_id: { type: string }
+                          sender_type: { type: string, enum: [MASKING, NON_MASKING] }
+                          rate: { type: string, example: "0.4000" }
+                          estimated_cost: { type: string, example: "0.40" }
+                          currency: { type: string }
+  /messages:
+    get:
+      summary: Messages, newest first (scope messages:read)
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [queued, submitted, delivered, failed, rejected, expired, cancelled] } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: reference, in: query, schema: { type: string } }
+        - { name: from, in: query, schema: { type: string, format: date }, description: "UTC date, inclusive" }
+        - { name: until, in: query, schema: { type: string, format: date }, description: "UTC date, inclusive" }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 25 } }
+        - { name: cursor, in: query, schema: { type: string }, description: "meta.nextCursor of the previous page" }
+      responses:
+        "200":
+          description: Page of messages; `meta.hasMore`, `meta.nextCursor`
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Ok"
+                  - properties:
+                      data: { type: array, items: { $ref: "#/components/schemas/Message" } }
+  /messages/{id}:
+    get:
+      summary: One message with its status history
+      parameters: [{ name: id, in: path, required: true, schema: { type: string, format: uuid } }]
+      responses:
+        "200":
+          description: Message
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Ok"
+                  - properties: { data: { $ref: "#/components/schemas/Message" } }
+        "404": { $ref: "#/components/responses/Error" }
+  /balance:
+    get:
+      summary: Wallet balance and your per-segment rates (scope balance:read)
+      responses:
+        "200":
+          description: Balance
+          content:
+            application/json:
+              example: { success: true, data: { balance: "1250.4000", currency: BDT, plan: Starter, rates: { transactional: { masking: "0.6000", non_masking: "0.4000" }, promotional: { masking: "0.6000", non_masking: "0.4000" } } }, meta: { requestId: req_abc } }
+  /sender-ids:
+    get:
+      summary: Sender IDs of your account (scope sender_ids:read)
+      responses:
+        "200":
+          description: List
+          content:
+            application/json:
+              example: { success: true, data: [{ sender_id: ACME, type: masking, status: approved, default: true, approved_at: "2026-10-01T08:00:00.000Z", rejection_reason: null }], meta: { requestId: req_abc } }
+webhooks:
+  deliveryReport:
+    post:
+      summary: Events we POST to your webhook endpoints (configure in Dashboard → Developers)
+      description: |
+        Headers: `X-SMSFlow-Event` (message.delivered | message.failed | campaign.completed),
+        `X-SMSFlow-Delivery` (unique id — deduplicate on it), `X-SMSFlow-Signature: t=<unix>,v1=<hex>`
+        where v1 = HMAC-SHA256(your endpoint secret, "<t>.<raw body>"). Reject stale timestamps.
+        Answer 2xx; failures are retried with exponential backoff up to 8 times.
+      requestBody:
+        content:
+          application/json:
+            example: { id: "c2f0…", event: message.delivered, created_at: "2026-10-07T06:00:05.000Z", data: { message_id: "…", to: "+8801712345678", status: delivered, error_code: null, error_message: null, segments: 1, cost: "0.4", refunded: false, client_reference: order-1, campaign_id: null, occurred_at: "2026-10-07T06:00:05.000Z" } }
+      responses:
+        "200": { description: Acknowledged }
+components:
+  securitySchemes:
+    apiKey: { type: http, scheme: bearer, bearerFormat: "sfk_live_<id>_<secret>" }
+  parameters:
+    IdempotencyKey: { name: Idempotency-Key, in: header, required: false, schema: { type: string, maxLength: 255 } }
+  schemas:
+    Ok:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        meta: { type: object, properties: { requestId: { type: string, example: req_a1b2c3d4e5f6g7h8 } } }
+    Error:
+      type: object
+      properties:
+        success: { type: boolean, const: false }
+        error:
+          type: object
+          properties:
+            code:
+              type: string
+              enum: [INVALID_REQUEST, VALIDATION_ERROR, UNAUTHORIZED, INVALID_API_KEY, FORBIDDEN, INSUFFICIENT_SCOPE, ACCOUNT_SUSPENDED, EMAIL_NOT_VERIFIED, NOT_FOUND, CONFLICT, IDEMPOTENCY_CONFLICT, RATE_LIMITED, INSUFFICIENT_BALANCE, INVALID_RECIPIENT, SENDER_ID_NOT_APPROVED, CONTENT_BLOCKED, MESSAGE_TOO_LONG, RECIPIENT_SUPPRESSED, QUIET_HOURS, DAILY_LIMIT_EXCEEDED, MONTHLY_LIMIT_EXCEEDED, PAYMENT_FAILED, PROVIDER_ERROR, PROVIDER_NOT_CONFIGURED, FEATURE_DISABLED, INTERNAL_ERROR]
+            message: { type: string }
+            details:
+              description: "VALIDATION_ERROR: {fields: [{path, message}]}; other codes: code-specific context"
+              type: object
+        meta: { type: object, properties: { requestId: { type: string } } }
+    Message:
+      type: object
+      properties:
+        message_id: { type: string, format: uuid }
+        to: { type: string }
+        status: { type: string, enum: [queued, submitted, delivered, failed, rejected, expired, cancelled] }
+        type: { type: string, enum: [transactional, promotional] }
+        sender_id: { type: string }
+        segments: { type: integer }
+        encoding: { type: string, enum: [GSM7, UCS2] }
+        cost: { type: string }
+        currency: { type: string }
+        refunded: { type: boolean }
+        error_code: { type: [string, "null"] }
+        error_message: { type: [string, "null"] }
+        reference: { type: [string, "null"] }
+        campaign_id: { type: [string, "null"] }
+        queued_at: { type: string, format: date-time }
+        scheduled_for: { type: [string, "null"], format: date-time }
+        submitted_at: { type: [string, "null"], format: date-time }
+        delivered_at: { type: [string, "null"], format: date-time }
+        failed_at: { type: [string, "null"], format: date-time }
+        events:
+          type: array
+          description: Only on GET /messages/{id}
+          items: { type: object, properties: { status: { type: string }, at: { type: string, format: date-time }, description: { type: [string, "null"] } } }
+  responses:
+    Error:
+      description: Error envelope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }

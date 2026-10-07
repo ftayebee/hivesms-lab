@@ -33,6 +33,17 @@
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
+        <!-- Test-only secrets (never real values). -->
+        <env name="AUTH_SECRET" value="test-auth-secret-0123456789abcdef0123456789" force="true"/>
+        <env name="API_KEY_PEPPER" value="test-api-key-pepper-0123456789abcdef012345" force="true"/>
+        <env name="SETTINGS_ENCRYPTION_KEY" value="test-settings-key-0123456789abcdef0123456" force="true"/>
+        <env name="FRONTEND_PROXY_SECRET" value="test-frontend-proxy-secret-0123456789abcd" force="true"/>
+        <env name="CRON_SECRET" value="test-cron-secret-0123456789" force="true"/>
+        <env name="SMS_PROVIDER" value="mock" force="true"/>
+        <env name="SMS_INLINE_DISPATCH" value="false" force="true"/>
+        <env name="PAYMENT_PROVIDERS" value="mock,manual" force="true"/>
+        <env name="FRONTEND_URL" value="http://localhost:3000" force="true"/>
+        <env name="TRUSTED_PROXIES" value="" force="true"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
     </php>

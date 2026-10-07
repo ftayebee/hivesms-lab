@@ -1,6 +1,11 @@
 # 09 · Backend migration: Next.js + Prisma → Next.js + Laravel API (MySQL)
 
-Status: **audit complete, migration not started on the backend.** Audit date 2026-10-06, commit `b01ea87`.
+Status (2026-10-07): **steps 1–4 done, Laravel side of steps 5–11 done** — light-only UI; Laravel 12 backend
+in `backend/` on the existing schema with the complete API (186 routes: auth, dashboard, customer SMS API,
+webhooks, admin), services, jobs, scheduler and 175 tests ([10](10-laravel-api-audit.md),
+[11](11-laravel-api-reference.md)). The Next.js app still does all work through Prisma. Next: switch
+the Next.js pages/actions to the API module by module (steps 5–11, frontend side), then step 12.
+Audit date 2026-10-06, commit `b01ea87`.
 
 ## 1. Current architecture
 
@@ -143,8 +148,8 @@ to keep every intermediate step buildable and deployable.
 | # | Step | Verification |
 |---|---|---|
 | 1 | Light mode only (remove dark theme) | lint, typecheck, build, visual check |
-| 2 | Scaffold `backend/` (Laravel 13), DB config, CORS, envelope/exception handler, health endpoint, schema baseline for existing tables | `route:list`, `migrate:status` on a copy of the DB, `php artisan test` |
-| 3 | Eloquent models + relationships + enums for all 42 tables, factories | model tests on a test DB |
+| 2 | Scaffold `backend/` (Laravel 12, PHP 8.2 — upgrade to 13 before Feb 2027), DB config, CORS, envelope/exception handler, health endpoint, schema baseline for existing tables | `route:list`, `migrate:status` on a copy of the DB, `php artisan test` |
+| 3 | Eloquent models + relationships + enums for all 42 tables, factories (privileged columns not mass-assignable; strict mode outside production) | model tests on a test DB |
 | 4 | Compatibility layer: argon2id, session-token guard, API-key guard, AES-GCM settings, rate limiter, audit log | tests with fixtures produced by the Node code |
 | 5 | Auth API (register/login/logout/me/verify/reset/OTP/org switch) → switch Next auth actions to Laravel | Laravel feature tests; E2E sign-up/sign-in |
 | 6 | Read side: dashboard, reports, lists → pages fetch from Laravel | page-by-page parity checks |

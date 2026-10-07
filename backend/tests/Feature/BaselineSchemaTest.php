@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -12,15 +13,16 @@ class BaselineSchemaTest extends TestCase
 {
     private const MIGRATION = 'database/migrations/0001_01_01_000000_smsflow_baseline_schema.php';
 
-    private static bool $migrated = false;
-
-    /** Rebuilding 42 tables is slow; build once per class. Tests below restore what they change. */
+    /**
+     * Rebuilding 42 tables is slow: build once per test run (shared with RefreshDatabase).
+     * Tests below restore whatever they change.
+     */
     protected function setUp(): void
     {
         parent::setUp();
-        if (! self::$migrated) {
+        if (! RefreshDatabaseState::$migrated) {
             Artisan::call('migrate:fresh', ['--force' => true]);
-            self::$migrated = true;
+            RefreshDatabaseState::$migrated = true;
         }
     }
 

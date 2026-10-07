@@ -22,3 +22,6 @@
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Deployment archives (they contain .env/logs when built from a working copy)
+*.zip

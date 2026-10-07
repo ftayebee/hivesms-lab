@@ -2,48 +2,107 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
-use Database\Factories\UserFactory;
+use App\Enums\PlatformRole;
+use App\Enums\UserStatus;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Notifications\Notifiable;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
-class User extends Authenticatable
+/** Person who signs in (dashboard or admin). Password: argon2id hash in passwordHash. */
+class User extends BaseModel
 {
-    /** @use HasFactory<UserFactory> */
-    use HasFactory, Notifiable;
+    use HasFactory;
+    use HasUuids;
+    use SoftDeletes;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var list<string>
-     */
+    protected $table = 'users';
+
+    const CREATED_AT = 'createdAt';
+
+    const UPDATED_AT = 'updatedAt';
+
+    const DELETED_AT = 'deletedAt';
+
+    /** Privileged columns are deliberately absent: services set them with forceFill(). */
     protected $fillable = [
-        'name',
         'email',
-        'password',
+        'phone',
+        'name',
+        'locale',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var list<string>
-     */
     protected $hidden = [
-        'password',
-        'remember_token',
+        'passwordHash',
     ];
 
-    /**
-     * Get the attributes that should be cast.
-     *
-     * @return array<string, string>
-     */
+    /** Application-side defaults (as the Prisma client applied them). */
+    protected $attributes = [
+        'platformRole' => 'USER',
+        'status' => 'ACTIVE',
+        'locale' => 'en',
+        'failedLoginCount' => 0,
+    ];
+
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'platformRole' => PlatformRole::class,
+            'status' => UserStatus::class,
+            'emailVerifiedAt' => 'datetime',
+            'phoneVerifiedAt' => 'datetime',
+            'failedLoginCount' => 'integer',
+            'lockedUntil' => 'datetime',
+            'lastLoginAt' => 'datetime',
+            'passwordChangedAt' => 'datetime',
+            'createdAt' => 'datetime',
+            'updatedAt' => 'datetime',
+            'deletedAt' => 'datetime',
         ];
+    }
+
+    public function sessions(): HasMany
+    {
+        return $this->hasMany(Session::class, 'userId');
+    }
+
+    public function verificationTokens(): HasMany
+    {
+        return $this->hasMany(VerificationToken::class, 'userId');
+    }
+
+    public function memberships(): HasMany
+    {
+        return $this->hasMany(OrganizationMember::class, 'userId');
+    }
+
+    public function notifications(): HasMany
+    {
+        return $this->hasMany(Notification::class, 'userId');
+    }
+
+    public function notificationPrefs(): HasMany
+    {
+        return $this->hasMany(NotificationPreference::class, 'userId');
+    }
+
+    public function ticketMessages(): HasMany
+    {
+        return $this->hasMany(SupportMessage::class, 'authorId');
+    }
+
+    public function createdTickets(): HasMany
+    {
+        return $this->hasMany(SupportTicket::class, 'createdById');
+    }
+
+    public function assignedTickets(): HasMany
+    {
+        return $this->hasMany(SupportTicket::class, 'assignedToId');
+    }
+
+    public function auditLogs(): HasMany
+    {
+        return $this->hasMany(AuditLog::class, 'actorUserId');
     }
 }
