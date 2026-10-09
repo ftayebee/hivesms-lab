@@ -2,6 +2,7 @@
 
 namespace App\Http\Resources;
 
+use App\Http\RequestContext;
 use App\Support\Dhaka;
 
 /** Dashboard message (dispatch internals such as attempts and leases are not exposed). */
@@ -25,6 +26,8 @@ class MessageResource extends BaseResource
             'cost' => $this->money('cost'),
             'status' => $this->f('status'),
             'provider' => $this->f('provider'),
+            // Provider-side id: platform staff only (support lookups), never in customer responses.
+            'providerMessageId' => $this->when((bool) $request->attributes->get(RequestContext::ADMIN) && $this->loaded('providerMessageId'), fn () => $this->providerMessageId),
             'errorCode' => $this->f('errorCode'),
             'errorMessage' => $this->f('errorMessage'),
             'clientReference' => $this->f('clientReference'),

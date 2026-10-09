@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Api\V1\ApiController;
 use App\Http\Requests\Admin\OrgControlsRequest;
-use App\Http\Requests\Admin\WalletAdjustRequest;
+use App\Http\Resources\ApiKeyResource;
 use App\Http\Resources\AuditLogResource;
 use App\Http\Resources\CampaignResource;
 use App\Http\Resources\OrganizationResource;
@@ -26,17 +26,31 @@ class AdminCustomerController extends ApiController
 {
     public function __construct(private readonly AdminService $admin) {}
 
-    /** GET /admin/customers?q=&status=&sort=newest|balance&page= — existing snake_case contract. */
+    /**
+     * GET /admin/customers?q=&status=&planId=&review=1&from=&to=&sort=newest|balance&page= — existing snake_case
+     * contract. q: organization name or ID, member e-mail, name or phone. from/to: registration date (Dhaka days).
+     */
     public function index(Request $request): JsonResponse
     {
-        $q = $request->validate(['q' => ['nullable', 'string', 'max:100'], 'status' => ['nullable', 'in:ACTIVE,SUSPENDED'], 'sort' => ['nullable', 'in:newest,balance']]);
-        $page = $this->admin->organizations($q['q'] ?? null, $q['status'] ?? null, $this->page($request), $q['sort'] ?? 'newest');
+        $q = $request->validate([
+            'q' => ['nullable', 'string', 'max:100'], 'status' => ['nullable', 'in:ACTIVE,SUSPENDED'], 'sort' => ['nullable', 'in:newest,balance'],
+            'planId' => ['nullable', 'regex:/^(none|[0-9a-fA-F-]{36})$/'], 'review' => ['nullable', 'boolean'],
+            'from' => ['nullable', 'date_format:Y-m-d'], 'to' => ['nullable', 'date_format:Y-m-d'],
+        ]);
+        $from = isset($q['from']) ? Dhaka::parseDate($q['from']) : null;
+        $to = isset($q['to']) ? Dhaka::parseDate($q['to'])?->addDay() : null;
+        $page = $this->admin->organizations([
+            'q' => $q['q'] ?? null, 'status' => $q['status'] ?? null, 'planId' => $q['planId'] ?? null, 'review' => (bool) ($q['review'] ?? false),
+            'from' => $from?->format('Y-m-d H:i:s.v'), 'to' => $to?->format('Y-m-d H:i:s.v'),
+        ], $this->page($request), $q['sort'] ?? 'newest');
 
         return $this->ok($page->getCollection()->map(fn (Organization $o) => [
             'id' => $o->id,
             'name' => $o->name,
             'status' => $o->status->value,
             'plan' => $o->pricingPlan?->name,
+            'plan_id' => $o->pricingPlanId,
+            'review_required' => (bool) $o->requireCampaignReview,
             'balance' => Money::round($o->wallet ? (string) $o->wallet->balance : '0', 2),
             'members' => (int) $o->members_count,
             'messages' => (int) $o->messages_count,
@@ -61,6 +75,12 @@ class AdminCustomerController extends ApiController
             'sent30' => $d['sent30'],
             'failed30' => $d['failed30'],
             'audits' => AuditLogResource::collection($d['audits'])->resolve($request),
+            'apiKeys' => ApiKeyResource::collection($d['apiKeys'])->resolve($request),
+            'tickets' => $d['tickets']->map(fn ($t) => ['id' => $t->id, 'number' => $t->number, 'subject' => $t->subject, 'status' => $t->status->value,
+                'priority' => $t->priority->value, 'createdAt' => Dhaka::iso($t->createdAt), 'lastReplyAt' => Dhaka::iso($t->lastReplyAt)])->values(),
+            'statusTotals30' => $d['statusTotals30'],
+            'verification' => $d['verification'],
+            'planHistory' => AuditLogResource::collection($d['planHistory'])->resolve($request),
         ]);
     }
 
@@ -71,10 +91,10 @@ class AdminCustomerController extends ApiController
         return $this->ok(['message' => 'Account controls saved.']);
     }
 
-    /** POST /admin/customers/{id}/status {status: ACTIVE|SUSPENDED, reason} — existing contract. */
+    /** POST /admin/customers/{id}/status {status: ACTIVE|SUSPENDED, reason} — a reason is required in both directions. */
     public function status(Request $request, string $id): JsonResponse
     {
-        $data = $request->validate(['status' => ['required', 'in:ACTIVE,SUSPENDED'], 'reason' => ['nullable', 'string', 'max:500']]);
+        $data = $request->validate(['status' => ['required', 'in:ACTIVE,SUSPENDED'], 'reason' => ['required', 'string', 'min:5', 'max:500']]);
         $this->admin->setOrganizationStatus($this->admin($request), $id, $data['status'], isset($data['reason']) ? trim($data['reason']) ?: null : null);
 
         return $this->ok(['id' => $id, 'status' => $data['status']]);
@@ -97,13 +117,5 @@ class AdminCustomerController extends ApiController
             'page' => $page->currentPage(), 'pageSize' => $page->perPage(), 'total' => $page->total(), 'totalPages' => $page->lastPage(),
             'totalBalance' => Money::round((string) $totals->total, 2), 'belowThreshold' => (int) $totals->low,
         ]);
-    }
-
-    /** POST /admin/customers/{id}/wallet-adjustments {direction, amount, note} */
-    public function adjustWallet(WalletAdjustRequest $request, string $id): JsonResponse
-    {
-        $this->admin->adjustWallet($this->admin($request), $id, $request->input('direction'), (string) $request->input('amount'), trim($request->input('note')));
-
-        return $this->ok(['message' => 'Wallet adjusted.'], 201);
     }
 }

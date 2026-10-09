@@ -7,7 +7,8 @@ import { PageHeader } from "@/components/shared/states";
 import { AdminForm } from "@/components/admin/admin-ui";
 import { requirePlatform } from "@/lib/auth/session";
 import { siteConfig } from "@/config/site";
-import { getPaymentSettings, getSiteContent, getSmsPolicy, getSmsProviderSettings, listSecretStatus } from "@/services/settings";
+import { settingsPage } from "@/features/admin/page-data";
+import { laravelPage } from "@/lib/laravel-api";
 import { saveSiteContentAction, savePaymentSettingsAction, saveSmsPolicyAction, saveSmsProviderAction } from "@/features/admin/actions";
 
 export const metadata = { title: "Settings" };
@@ -34,7 +35,7 @@ function Check({ name, label, checked }: { name: string; label: string; checked:
 
 export default async function AdminSettingsPage() {
   await requirePlatform("admin:settings:manage");
-  const [provider, secrets, policy, payments, site] = await Promise.all([getSmsProviderSettings(), listSecretStatus(), getSmsPolicy(), getPaymentSettings(), getSiteContent()]);
+  const { provider, secrets, policy, payments, site } = await laravelPage(() => settingsPage());
   const base = process.env.APP_URL ?? "http://localhost:3000";
   return (
     <>

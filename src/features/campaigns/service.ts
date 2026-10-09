@@ -16,6 +16,8 @@ import { estimateCampaign, type CampaignAudience } from "@/services/messaging/ca
 import { resolveSender } from "@/services/messaging/send";
 import { applyStatusUpdate } from "@/services/messaging/delivery";
 import type { ComposerInput } from "./schemas";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 
 export const CAMPAIGNS_PAGE_SIZE = 20;
 const MAX_PASTED_NUMBERS = 100_000;
@@ -49,6 +51,7 @@ async function loadEditable(ctx: TenantContext, id: string) {
 /** Saves a draft (partial content allowed). */
 export async function saveDraft(ctx: TenantContext, input: ComposerInput) {
   requirePermission(ctx, "campaigns:write");
+  if (laravelEnabled("campaigns")) return viaLaravel.saveDraft(input);
   if (input.id) await loadEditable(ctx, input.id);
   const groupIds = await ownedGroups(ctx, input.groupIds);
   const policy = await getSmsPolicy();
@@ -127,6 +130,7 @@ async function validateForSend(ctx: TenantContext, input: ComposerInput) {
 
 export async function estimateComposer(ctx: TenantContext, input: ComposerInput): Promise<CampaignEstimate> {
   requirePermission(ctx, ["campaigns:write", "sms:send"]);
+  if (laravelEnabled("campaigns")) return viaLaravel.estimate(input);
   const v = await validateForSend(ctx, input);
   return {
     total: v.est.total,
@@ -150,6 +154,7 @@ export async function estimateComposer(ctx: TenantContext, input: ComposerInput)
 export async function submitCampaign(ctx: TenantContext, input: ComposerInput) {
   requirePermission(ctx, ["campaigns:write", "sms:send"]);
   assertOrgActive(ctx);
+  if (laravelEnabled("campaigns")) return viaLaravel.submit(input, ctx);
   if (input.id) await loadEditable(ctx, input.id);
   const v = await validateForSend(ctx, input);
   if (v.balance.lt(new Decimal(v.est.estimatedCost))) {
@@ -195,6 +200,7 @@ async function getOwned(ctx: TenantContext, id: string) {
 
 export async function pauseCampaign(ctx: TenantContext, id: string) {
   requirePermission(ctx, "campaigns:write");
+  if (laravelEnabled("campaigns")) return viaLaravel.op(id, "pause");
   await getOwned(ctx, id);
   const r = await db.campaign.updateMany({ where: { id, status: "PROCESSING" }, data: { status: "PAUSED", pausedAt: new Date() } });
   if (!r.count) throw new AppError("CONFLICT", "Only campaigns that are sending can be paused.");
@@ -204,6 +210,7 @@ export async function pauseCampaign(ctx: TenantContext, id: string) {
 export async function resumeCampaign(ctx: TenantContext, id: string) {
   requirePermission(ctx, "campaigns:write");
   assertOrgActive(ctx);
+  if (laravelEnabled("campaigns")) return viaLaravel.op(id, "resume");
   await getOwned(ctx, id);
   const r = await db.campaign.updateMany({ where: { id, status: "PAUSED" }, data: { status: "PROCESSING", pausedAt: null } });
   if (!r.count) throw new AppError("CONFLICT", "Only paused campaigns can be resumed.");
@@ -212,6 +219,7 @@ export async function resumeCampaign(ctx: TenantContext, id: string) {
 
 export async function cancelCampaign(ctx: TenantContext, id: string) {
   requirePermission(ctx, "campaigns:write");
+  if (laravelEnabled("campaigns")) return viaLaravel.op(id, "cancel");
   const c = await getOwned(ctx, id);
   const r = await db.campaign.updateMany({
     where: { id, status: { in: ["DRAFT", "PENDING_REVIEW", "SCHEDULED", "PROCESSING", "PAUSED"] } },
@@ -234,6 +242,7 @@ export async function cancelQueuedMessages(campaignId: string, limit: number) {
 
 export async function duplicateCampaign(ctx: TenantContext, id: string) {
   requirePermission(ctx, "campaigns:write");
+  if (laravelEnabled("campaigns")) return viaLaravel.duplicate(id);
   const c = await getOwned(ctx, id);
   const copy = await db.campaign.create({
     data: {
@@ -258,6 +267,7 @@ export async function duplicateCampaign(ctx: TenantContext, id: string) {
 
 export async function deleteDraft(ctx: TenantContext, id: string) {
   requirePermission(ctx, "campaigns:write");
+  if (laravelEnabled("campaigns")) return viaLaravel.remove(id);
   const c = await getOwned(ctx, id);
   if (!["DRAFT", "CANCELLED"].includes(c.status)) throw new AppError("CONFLICT", "Only drafts and cancelled campaigns can be deleted.");
   await db.campaign.update({ where: { id }, data: { deletedAt: new Date() } });
@@ -268,6 +278,7 @@ export async function deleteDraft(ctx: TenantContext, id: string) {
 
 export async function listCampaigns(ctx: TenantContext, q: { q?: string; status?: CampaignStatus; type?: "TRANSACTIONAL" | "PROMOTIONAL"; page: number }) {
   requirePermission(ctx, "campaigns:read");
+  if (laravelEnabled("campaigns")) return viaLaravel.listCampaigns(q);
   const where: Prisma.CampaignWhereInput = {
     organizationId: ctx.organizationId,
     deletedAt: null,
@@ -285,6 +296,7 @@ export async function listCampaigns(ctx: TenantContext, q: { q?: string; status?
 
 export async function getCampaignDetail(ctx: TenantContext, id: string) {
   requirePermission(ctx, "campaigns:read");
+  if (laravelEnabled("campaigns")) return viaLaravel.getCampaignDetail(id);
   const c = await db.campaign.findFirst({ where: { id, organizationId: ctx.organizationId, deletedAt: null }, include: { template: { select: { name: true } } } });
   if (!c) throw notFound("Campaign");
   const [statusRows, failures, operators, timeline, recipientSkips, creator] = await Promise.all([
@@ -319,6 +331,7 @@ export async function getCampaignDetail(ctx: TenantContext, id: string) {
 
 export async function listCampaignMessages(ctx: TenantContext, id: string, opts: { status?: MessageStatus; page: number; pageSize: number }) {
   requirePermission(ctx, "campaigns:read");
+  if (laravelEnabled("campaigns")) return viaLaravel.listCampaignMessages(id, opts);
   const where: Prisma.MessageWhereInput = { organizationId: ctx.organizationId, campaignId: id, ...(opts.status ? { status: opts.status } : {}) };
   const [rows, total] = await Promise.all([
     db.message.findMany({ where, orderBy: { createdAt: "asc" }, skip: (opts.page - 1) * opts.pageSize, take: opts.pageSize, select: { id: true, to: true, status: true, segments: true, cost: true, errorMessage: true, submittedAt: true, deliveredAt: true, failedAt: true, operator: true, refundedAt: true } }),

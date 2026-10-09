@@ -9,6 +9,8 @@ import { getRequestMeta } from "@/lib/auth/session";
 import { sendEmail } from "@/services/email";
 import { getSiteContent } from "@/services/settings";
 import { normalizeBdPhone } from "@/lib/phone";
+import { laravel } from "@/lib/laravel-api";
+import { laravelEnabled } from "@/lib/laravel/flags";
 
 const optionalText = (max: number) =>
   z
@@ -40,6 +42,11 @@ export async function submitContactRequest(_prev: unknown, formData: FormData): 
     const raw = formToObject(formData);
     if (raw.website) return { ok: true, message: "Thanks, we'll be in touch." }; // silently drop bots
     const input = contactSchema.parse(raw);
+    if (laravelEnabled("public")) {
+      // Laravel rate-limits per browser IP (forwarded), stores the request and notifies sales.
+      const { data } = await laravel.post<{ message: string }>("public/contact", input, { auth: false });
+      return { ok: true, message: data.message };
+    }
     const meta = await guard("contact");
     await db.contactRequest.create({
       data: { name: input.name, company: input.company, email: input.email, phone: input.phone, subject: input.subject, message: input.message, ipAddress: meta.ip },
@@ -80,6 +87,10 @@ export async function submitAbuseReport(_prev: unknown, formData: FormData): Pro
     const raw = formToObject(formData);
     if (raw.website) return { ok: true, message: "Thank you. Your report was received." };
     const input = abuseSchema.parse(raw);
+    if (laravelEnabled("public")) {
+      const { data } = await laravel.post<{ message: string }>("public/abuse-reports", input, { auth: false });
+      return { ok: true, message: data.message };
+    }
     const meta = await guard("abuse");
     // Case-insensitive: sender_ids.value uses the default utf8mb4_unicode_ci collation.
     const sender = await db.senderId.findFirst({ where: { value: { equals: input.senderValue } }, select: { organizationId: true } });

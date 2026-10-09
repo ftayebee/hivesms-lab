@@ -43,6 +43,26 @@ class CampaignTest extends TestCase
         $this->getJson("/api/v1/app/campaigns/{$id}", $t['headers'])->assertStatus(404);
     }
 
+    public function test_composer_config_returns_rules_rates_and_balance_of_the_session_organization(): void
+    {
+        $t = $this->tenant('12.5');
+        $this->getJson('/api/v1/app/sms/composer', $t['headers'])
+            ->assertOk()
+            ->assertJsonPath('data.segmentation.gsm7.single', 160)
+            ->assertJsonPath('data.segmentation.maxSegments', 10)
+            ->assertJsonPath('data.promotionalOptOutText', 'Reply STOP to opt out')
+            ->assertJsonPath('data.rates.transactionalNonMasking', '0.4000')
+            ->assertJsonPath('data.rates.promotionalMasking', '0.6000')
+            ->assertJsonPath('data.balance', '12.5000');
+        // The balance is always the session organization's (no organization parameter exists).
+        $other = $this->tenant('3');
+        $this->getJson('/api/v1/app/sms/composer?organizationId='.$t['org']->id, $other['headers'])->assertOk()->assertJsonPath('data.balance', '3.0000');
+        // Without campaigns:write (VIEWER) the composer configuration is not available.
+        $viewer = $this->tenant('1', 'VIEWER');
+        $this->getJson('/api/v1/app/sms/composer', $viewer['headers'])->assertForbidden();
+        $this->getJson('/api/v1/app/sms/composer')->assertUnauthorized();
+    }
+
     public function test_estimate_reports_audience_cost_and_balance(): void
     {
         $t = $this->tenant('1.00');

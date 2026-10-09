@@ -3,9 +3,12 @@
 use App\Http\Controllers\Api\V1\Account\ProfileController;
 use App\Http\Controllers\Api\V1\Account\TeamController;
 use App\Http\Controllers\Api\V1\Admin\AdminCustomerController;
+use App\Http\Controllers\Api\V1\Admin\AdminExportController;
+use App\Http\Controllers\Api\V1\Admin\AdminFinanceController;
 use App\Http\Controllers\Api\V1\Admin\AdminPlatformController;
 use App\Http\Controllers\Api\V1\Admin\AdminReviewController;
 use App\Http\Controllers\Api\V1\Admin\AdminSettingsController;
+use App\Http\Controllers\Api\V1\Admin\AdminStaffController;
 use App\Http\Controllers\Api\V1\Admin\AdminSupportController;
 use App\Http\Controllers\Api\V1\ApiKeys\ApiKeyController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
@@ -198,6 +201,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
             Route::post('campaigns/{id}/cancel', [CampaignController::class, 'cancel'])->name('campaigns.cancel');
             Route::post('campaigns/{id}/duplicate', [CampaignController::class, 'duplicate'])->name('campaigns.duplicate');
             Route::post('sms/segments', [CampaignController::class, 'segments'])->name('sms.segments');
+            Route::get('sms/composer', [CampaignController::class, 'composer'])->name('sms.composer');
         });
         Route::middleware(['tenant:campaigns:write,sms:send', 'verified.email', 'ratelimit:dashboard_send_per_user', 'idempotent'])->group(function (): void {
             Route::post('campaigns/estimate', [CampaignController::class, 'estimate'])->name('campaigns.estimate');
@@ -295,7 +299,9 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
             Route::put('customers/{id}/controls', [AdminCustomerController::class, 'updateControls'])->name('customers.controls');
             Route::post('customers/{id}/status', [AdminCustomerController::class, 'status'])->name('customers.status');
         });
-        Route::post('customers/{id}/wallet-adjustments', [AdminCustomerController::class, 'adjustWallet'])->middleware('platform:admin:billing:manage')->name('customers.wallet');
+        // Money-moving: SUPER_ADMIN only, password re-confirmation and idempotency key (AdminFinanceController).
+        Route::post('customers/{id}/wallet-adjustments', [AdminFinanceController::class, 'adjustWallet'])->middleware('platform:admin:wallet:adjust')->name('customers.wallet');
+        Route::post('users/{id}/password-reset', [AdminStaffController::class, 'sendPasswordReset'])->middleware('platform:admin:customers:manage')->name('users.password-reset');
 
         Route::get('campaigns', [AdminReviewController::class, 'campaigns'])->middleware('platform:admin:campaigns:review')->name('campaigns.index');
         Route::post('campaigns/{id}/review', [AdminReviewController::class, 'reviewCampaign'])->middleware('platform:admin:campaigns:review')->name('campaigns.review');
@@ -308,6 +314,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
 
         Route::get('payments', [AdminReviewController::class, 'payments'])->middleware('platform:admin:billing:read')->name('payments.index');
         Route::post('payments/{id}/review', [AdminReviewController::class, 'reviewPayment'])->middleware('platform:admin:billing:manage')->name('payments.review');
+        Route::post('payments/{id}/refund', [AdminFinanceController::class, 'refund'])->middleware('platform:admin:payments:refund')->name('payments.refund');
 
         Route::middleware('platform:admin:support')->group(function (): void {
             Route::get('support/tickets', [AdminSupportController::class, 'index'])->name('support.index');
@@ -317,7 +324,24 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
         });
 
         Route::get('users', [AdminPlatformController::class, 'users'])->middleware('platform:admin:users:manage')->name('users.index');
-        Route::put('users/{id}/access', [AdminPlatformController::class, 'updateUserAccess'])->middleware('platform:admin:users:manage')->name('users.access');
+        Route::middleware('platform:admin:users:manage')->group(function (): void {
+            Route::put('users/{id}/access', [AdminStaffController::class, 'updateAccess'])->name('users.access');
+            Route::post('staff', [AdminStaffController::class, 'invite'])->name('staff.invite');
+            Route::get('staff/permissions', [AdminStaffController::class, 'permissions'])->name('staff.permissions');
+            Route::get('staff/history', [AdminStaffController::class, 'history'])->name('staff.history');
+        });
+
+        // Super Admin dashboard, finance, health and exports (docs/18).
+        Route::get('dashboard', [AdminFinanceController::class, 'dashboard'])->middleware('platform:admin:access')->name('dashboard');
+        Route::middleware('platform:admin:finance:read')->group(function (): void {
+            Route::get('finance/summary', [AdminFinanceController::class, 'summary'])->name('finance.summary');
+            Route::get('finance/transactions', [AdminFinanceController::class, 'transactions'])->name('finance.transactions');
+            Route::get('finance/margins', [AdminFinanceController::class, 'margins'])->name('finance.margins');
+            Route::get('finance/provider-costs', [AdminFinanceController::class, 'providerCosts'])->name('finance.costs');
+        });
+        Route::put('finance/provider-costs', [AdminFinanceController::class, 'saveProviderCosts'])->middleware('platform:admin:costs:manage')->name('finance.costs.update');
+        Route::get('system/health', [AdminFinanceController::class, 'health'])->middleware('platform:admin:health:read')->name('system.health');
+        Route::get('exports/{kind}', [AdminExportController::class, 'export'])->where('kind', '[a-z-]{3,30}')->middleware('platform:admin:reports:export')->name('exports');
 
         Route::middleware('platform:admin:abuse:manage')->group(function (): void {
             Route::get('abuse-reports', [AdminPlatformController::class, 'abuseReports'])->name('abuse.index');
@@ -329,7 +353,8 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
 
         Route::get('messages', [AdminPlatformController::class, 'messages'])->middleware('platform:admin:messages:read')->name('messages');
         Route::get('audit-logs', [AdminPlatformController::class, 'auditLogs'])->middleware('platform:admin:audit:read')->name('audit');
-        Route::get('api-logs', [AdminPlatformController::class, 'apiLogs'])->middleware('platform:admin:audit:read')->name('api-logs');
+        // Same permission as the admin "API logs" page of the Next.js app (support staff investigate customer integrations).
+        Route::get('api-logs', [AdminPlatformController::class, 'apiLogs'])->middleware('platform:admin:messages:read')->name('api-logs');
 
         Route::middleware('platform:admin:pricing:manage')->group(function (): void {
             Route::get('pricing/plans', [AdminSettingsController::class, 'plans'])->name('plans.index');
@@ -338,6 +363,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
             Route::get('pricing/packages', [AdminSettingsController::class, 'packages'])->name('packages.index');
             Route::post('pricing/packages', [AdminSettingsController::class, 'storePackage'])->name('packages.store');
             Route::put('pricing/packages/{id}', [AdminSettingsController::class, 'updatePackage'])->name('packages.update');
+            Route::get('settings/billing-policy', [AdminSettingsController::class, 'billingPolicy'])->name('settings.billing.show');
             Route::put('settings/billing-policy', [AdminSettingsController::class, 'updateSettings'])->defaults('section', 'billing-policy')->name('settings.billing');
         });
         Route::middleware('platform:admin:settings:manage')->group(function (): void {

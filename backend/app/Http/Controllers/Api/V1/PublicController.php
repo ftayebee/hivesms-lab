@@ -25,6 +25,8 @@ class PublicController extends ApiController
             'packages' => $billing->packages(),
             'vatRatePercent' => $policy['vatRatePercent'],
             'minimumTopUp' => $policy['minimumTopUp'],
+            'maximumTopUp' => $policy['maximumTopUp'],
+            'balanceValidityMonths' => $policy['balanceValidityMonths'],
         ]);
     }
 

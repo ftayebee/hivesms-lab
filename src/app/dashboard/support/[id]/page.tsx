@@ -9,6 +9,7 @@ import { can } from "@/lib/auth/context";
 import { isAppError } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 import { getT } from "@/i18n/server";
+import { laravelPage } from "@/lib/laravel-api";
 import { getTicket } from "@/features/support/service";
 import { CloseTicketButton, ReplyForm } from "@/features/support/components/support-ui";
 
@@ -21,7 +22,7 @@ export default async function TicketPage({ params, searchParams }: PageProps<"/d
   const { t } = await getT();
   let ticket;
   try {
-    ticket = await getTicket(ctx, id);
+    ticket = await laravelPage(() => getTicket(ctx, id));
   } catch (err) {
     if (isAppError(err) && err.code === "NOT_FOUND") notFound();
     throw err;

@@ -29,7 +29,9 @@ class PaymentTest extends TestCase
     {
         $t = $this->tenant('0');
         $pkg = CreditPackage::query()->forceCreate(['name' => 'BDT 5,000', 'amount' => '5000', 'bonusPercent' => '2', 'active' => true]);
-        $this->getJson('/api/v1/app/payments/methods', $t['headers'])->assertOk()->assertJsonPath('data.providers.0.key', 'mock')->assertJsonPath('data.providers.1.key', 'manual');
+        $this->getJson('/api/v1/app/payments/methods', $t['headers'])->assertOk()->assertJsonPath('data.providers.0.key', 'mock')->assertJsonPath('data.providers.1.key', 'manual')
+            ->assertJsonPath('data.policy.vatRatePercent', 15)->assertJsonPath('data.policy.minimumTopUp', 500)
+            ->assertJsonPath('data.policy.maximumTopUp', 500000)->assertJsonPath('data.policy.balanceValidityMonths', 12);
         $this->postJson('/api/v1/app/payments/preview', ['packageId' => $pkg->id], $t['headers'])
             ->assertOk()->assertJsonPath('data.subtotal', '5000.00')->assertJsonPath('data.vatAmount', '750.00')->assertJsonPath('data.total', '5750.00')->assertJsonPath('data.creditAmount', '5100.00');
         $this->postJson('/api/v1/app/payments/preview', ['amount' => 100], $t['headers'])->assertStatus(422)->assertJsonPath('error.details.field', 'amount');
@@ -84,6 +86,10 @@ class PaymentTest extends TestCase
         $t = $this->tenant('0');
         $res = $this->postJson('/api/v1/app/payments', ['amount' => 600, 'provider' => 'manual'], $t['headers'])->assertCreated()->assertJsonPath('data.checkout.type', 'manual');
         $id = $res->json('data.payment.id');
+        $this->getJson("/api/v1/app/payments/{$id}", $t['headers'])->assertOk()->assertJsonPath('data.provider', 'manual')
+            ->assertJsonPath('meta.manualInstructions', fn ($v) => is_string($v) && $v !== '');
+        // Another organization cannot read the payment (nor its manual instructions meta).
+        $this->getJson("/api/v1/app/payments/{$id}", $this->tenant('0')['headers'])->assertStatus(404)->assertJsonMissingPath('meta.manualInstructions');
         $this->postJson("/api/v1/app/payments/{$id}/reference", ['reference' => 'BKASH-TRX-9'], $t['headers'])->assertOk()->assertJsonPath('data.status', 'AWAITING_VERIFICATION');
 
         $admin = $this->staff('ADMIN');

@@ -83,6 +83,14 @@ final class Permissions
         'admin:settings:manage' => ['SUPER_ADMIN'],
         'admin:audit:read' => ['ADMIN', 'SUPER_ADMIN'],
         'admin:abuse:manage' => ['SUPPORT', 'ADMIN', 'SUPER_ADMIN'],
+        // Super Admin panel (docs/17). Money-moving and owner-level permissions are SUPER_ADMIN only;
+        // SUPPORT never receives a financial permission.
+        'admin:finance:read' => ['ADMIN', 'SUPER_ADMIN'],
+        'admin:reports:export' => ['ADMIN', 'SUPER_ADMIN'],
+        'admin:health:read' => ['ADMIN', 'SUPER_ADMIN'],
+        'admin:wallet:adjust' => ['SUPER_ADMIN'],
+        'admin:payments:refund' => ['SUPER_ADMIN'],
+        'admin:costs:manage' => ['SUPER_ADMIN'],
     ];
 
     /** @param list<string>|string $required */

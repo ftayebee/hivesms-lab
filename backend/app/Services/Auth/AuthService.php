@@ -204,6 +204,17 @@ class AuthService
         if (! $user) {
             return;
         }
+        $this->mailer->send($user->email, EmailTemplates::passwordReset($user->name, $this->createPasswordResetLink($user)));
+        $this->audit->log('auth.password_reset_requested', ['type' => 'USER', 'userId' => $user->id], ip: $ip);
+    }
+
+    /**
+     * New single-use password-reset link (previous unused links are invalidated). Only the sha256 of
+     * the token is stored. Used by the public flow, admin-initiated recovery and staff invitations
+     * (which e-mail it) and by the owner bootstrap command (which prints it once).
+     */
+    public function createPasswordResetLink(User $user): string
+    {
         $token = Crypto::randomToken(32);
         VerificationToken::query()->where('userId', $user->id)->where('type', 'PASSWORD_RESET')->whereNull('consumedAt')->delete();
         VerificationToken::query()->forceCreate([
@@ -213,8 +224,14 @@ class AuthService
             'target' => $user->email,
             'expiresAt' => now()->addMinutes(self::RESET_TOKEN_MINUTES),
         ]);
-        $this->mailer->send($user->email, EmailTemplates::passwordReset($user->name, self::appUrl('/reset-password?token='.$token)));
-        $this->audit->log('auth.password_reset_requested', ['type' => 'USER', 'userId' => $user->id], ip: $ip);
+
+        return self::appUrl('/reset-password?token='.$token);
+    }
+
+    /** Admin-initiated account recovery: e-mails a reset link to the account's own address. Staff never see a password or token. */
+    public function sendPasswordResetFor(User $user): void
+    {
+        $this->mailer->send($user->email, EmailTemplates::passwordReset($user->name, $this->createPasswordResetLink($user)));
     }
 
     public function resetPassword(string $token, string $password, ?string $ip, ?string $userAgent): void

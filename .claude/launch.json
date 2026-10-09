@@ -20,6 +20,24 @@
       ],
       "port": 3100,
       "autoPort": true
+    },
+    {
+      "name": "admin-local",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "start"
+      ],
+      "port": 3210,
+      "env": {
+        "PORT": "3210",
+        "APP_URL": "http://localhost:3210",
+        "DATABASE_URL": "mysql://root@127.0.0.1:3306/smsflow_cutover",
+        "LARAVEL_API_URL": "http://127.0.0.1:8001",
+        "LARAVEL_FEATURES": "all",
+        "SMS_PROVIDER": "mock",
+        "PAYMENT_PROVIDERS": "mock,manual"
+      }
     }
   ]
 }

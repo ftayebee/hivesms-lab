@@ -7,9 +7,9 @@
  * - Creates or refreshes the permission catalogue.
  * - Creates the example pricing plans and credit packages only if they are missing, so edits
  *   made in Admin → Pricing are never overwritten.
- * - With BOOTSTRAP_ADMIN_EMAIL: creates that user as super admin with a one-time random
- *   password printed to this terminal (not to the application log), or promotes an existing
- *   user. Change the password after the first sign-in.
+ * - With BOOTSTRAP_ADMIN_EMAIL and no active super admin yet: creates that user as super admin with
+ *   a one-time random password printed to this terminal (not to the application log), or promotes an
+ *   existing user. Ignored once a super admin exists. Prefer `php artisan platform:bootstrap-owner`.
  */
 import "dotenv/config";
 import { randomBytes } from "node:crypto";
@@ -40,7 +40,13 @@ async function main() {
   }
 
   const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
-  if (email) {
+  // One-time only (docs/18): once an active super admin exists, owners are added in Admin → Users by an
+  // existing owner (reason + password, audited). The preferred bootstrap is the Laravel command
+  // `php artisan platform:bootstrap-owner`, which also asks for explicit confirmation.
+  const owners = email ? await db.user.count({ where: { platformRole: "SUPER_ADMIN", status: "ACTIVE", deletedAt: null } }) : 0;
+  if (email && owners > 0) {
+    console.log("! BOOTSTRAP_ADMIN_EMAIL ignored: an active super admin already exists. Unset it and add owners from the admin panel.");
+  } else if (email) {
     const user = await db.user.findUnique({ where: { email } });
     if (user) {
       if (user.platformRole !== "SUPER_ADMIN") {

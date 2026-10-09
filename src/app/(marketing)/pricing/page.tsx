@@ -5,8 +5,7 @@ import { PricingCalculator } from "@/components/marketing/pricing-calculator";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/misc";
-import { getActivePackages, getPublicPlans, type PublicPlan } from "@/services/billing/pricing";
-import { getBillingPolicy } from "@/services/settings";
+import { loadPublicPricing, type PublicPlan } from "@/services/billing/pricing";
 import { formatBDT } from "@/lib/format";
 import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 import { cn } from "@/lib/utils";
@@ -73,7 +72,7 @@ function PricingCard({ plan }: { plan: PublicPlan }) {
 }
 
 export default async function PricingPage() {
-  const [{ plans, source }, packages, policy] = await Promise.all([getPublicPlans(), getActivePackages(), getBillingPolicy()]);
+  const { plans, source, packages, policy } = await loadPublicPricing();
 
   return (
     <>

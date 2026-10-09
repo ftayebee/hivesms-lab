@@ -15,6 +15,8 @@ use App\Models\Payment;
 use App\Models\SenderId;
 use App\Models\SupportTicket;
 use App\Services\Admin\AdminService;
+use App\Services\Platform\AuditLogger;
+use App\Services\Platform\SettingsService;
 use App\Support\Dhaka;
 use App\Support\Phone;
 use Illuminate\Http\JsonResponse;
@@ -25,10 +27,10 @@ class AdminPlatformController extends ApiController
 {
     public function __construct(private readonly AdminService $admin) {}
 
-    /** GET /admin/overview: full overview (camelCase) including the 30-day series. */
-    public function overview(): JsonResponse
+    /** GET /admin/overview: full overview (camelCase) including the 30-day series and the active SMS provider key. */
+    public function overview(SettingsService $settings): JsonResponse
     {
-        return $this->ok($this->admin->overview());
+        return $this->ok($this->admin->overview() + ['smsProvider' => $settings->smsProviderSettings()['provider']]);
     }
 
     /** GET /admin/stats — existing snake_case contract. */
@@ -61,15 +63,6 @@ class AdminPlatformController extends ApiController
         $q = $request->validate(['q' => ['nullable', 'string', 'max:100'], 'role' => ['nullable', 'in:USER,SUPPORT,ADMIN,SUPER_ADMIN']]);
 
         return $this->paginated($request, $this->admin->users($q['q'] ?? null, $q['role'] ?? null, $this->page($request)), UserResource::class);
-    }
-
-    /** PUT /admin/users/{id}/access {platformRole?, status?}: sessions of the user are revoked. */
-    public function updateUserAccess(Request $request, string $id): JsonResponse
-    {
-        $data = $request->validate(['platformRole' => ['nullable', 'in:USER,SUPPORT,ADMIN,SUPER_ADMIN'], 'status' => ['nullable', 'in:ACTIVE,SUSPENDED']]);
-        $u = $this->admin->updateUserAccess($this->admin($request), $id, ['platformRole' => $data['platformRole'] ?? null, 'status' => $data['status'] ?? null]);
-
-        return $this->resource($request, UserResource::class, $u, 200, ['message' => 'User updated. Their sessions were signed out.']);
     }
 
     public function abuseReports(Request $request): JsonResponse
@@ -115,14 +108,18 @@ class AdminPlatformController extends ApiController
         return $this->ok(['message' => 'Lead updated.']);
     }
 
-    public function messages(Request $request): JsonResponse
+    /** GET /admin/messages?to=&status=&provider=&organizationId=&campaignId=&page= (recipient searches are audited). */
+    public function messages(Request $request, AuditLogger $audit): JsonResponse
     {
         $q = $request->validate([
             'organizationId' => ['nullable', 'uuid'], 'campaignId' => ['nullable', 'uuid'], 'to' => ['nullable', 'string', 'max:30'],
             'status' => ['nullable', 'in:QUEUED,SUBMITTED,DELIVERED,FAILED,REJECTED,EXPIRED,CANCELLED'],
+            'provider' => ['nullable', 'string', 'max:191'],
         ]);
         if (! empty($q['to'])) {
-            $q['to'] = Phone::normalize($q['to']) ?? $q['to'];
+            $raw = trim($q['to']);
+            $q['to'] = Phone::normalize($raw) ?? $raw;
+            $audit->log('admin.messages.search', $this->admin($request)->actor(), metadata: ['recipient' => mb_substr($raw, 0, 20)], ip: $request->ip());
         }
 
         return $this->paginated($request, $this->admin->messages($q, $this->page($request)), MessageResource::class);

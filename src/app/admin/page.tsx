@@ -5,15 +5,23 @@ import { StatsCard } from "@/components/dashboard/stats-card";
 import { SpendChart, UsageChart } from "@/components/dashboard/charts";
 import { PageHeader } from "@/components/shared/states";
 import { Alert } from "@/components/ui/misc";
-import { formatBDT, formatNumber } from "@/lib/format";
-import { getAdminOverview } from "@/features/admin/overview";
-import { getSmsProviderSettings } from "@/services/settings";
+
+import { adminOverviewPage } from "@/features/admin/page-data";
+import { laravelPage } from "@/lib/laravel-api";
+import { requirePlatform } from "@/lib/auth/session";
+import { platformCan } from "@/lib/auth/permissions";
+import { RangeFilter, rangeParams } from "@/components/admin/range-filter";
+import { parseRange, platformDashboard, superAdminAvailable, type PlatformDashboard, type RangeQuery } from "@/features/admin/super-admin";
+import { formatBDT, formatDateTime, formatNumber } from "@/lib/format";
 
 export const metadata = { title: "Overview" };
 
 export default async function AdminOverviewPage({ searchParams }: PageProps<"/admin">) {
   const sp = await searchParams;
-  const [o, provider] = await Promise.all([getAdminOverview(), getSmsProviderSettings()]);
+  const session = await requirePlatform("admin:access");
+  const { o, providerKey } = await laravelPage(() => adminOverviewPage());
+  const range = parseRange(sp);
+  const dash = superAdminAvailable() ? await laravelPage(() => platformDashboard(range)) : null;
   const queues = [
     { href: "/admin/campaigns?status=PENDING_REVIEW", label: "Campaigns awaiting review", n: o.reviewCampaigns, icon: Megaphone },
     { href: "/admin/sender-ids?status=PENDING", label: "Sender IDs awaiting review", n: o.pendingSenders, icon: BadgeCheck },
@@ -24,17 +32,18 @@ export default async function AdminOverviewPage({ searchParams }: PageProps<"/ad
   ];
   return (
     <>
-      <PageHeader title="Platform overview" description={`SMS provider: ${provider.provider === "mock" ? "mock (simulation, no real SMS)" : provider.provider}`} />
+      <PageHeader title="Platform overview" description={`SMS provider: ${providerKey === "mock" ? "mock (simulation, no real SMS)" : providerKey}`} />
       {sp.denied === "1" && (
         <Alert tone="warning" className="mb-6">
           Your staff role does not include access to that page.
         </Alert>
       )}
+      {dash && <PlatformSection d={dash} range={range} canFinance={platformCan(session.user.platformRole, "admin:finance:read")} />}
       <section aria-label="Key metrics" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatsCard label="Registered users" value={formatNumber(o.users)} icon={Users} hint={`${formatNumber(o.activeUsers)} active in 30 days`} />
         <StatsCard label="Organizations" value={formatNumber(o.orgs)} icon={Building2} hint={`${formatNumber(o.suspendedOrgs)} suspended`} />
         <StatsCard label="SMS volume" value={formatNumber(o.sms30)} icon={Send} tone="primary" hint={`${formatNumber(o.smsToday)} today · 30 days`} />
-        <StatsCard label="Revenue (30 days)" value={formatBDT(o.revenue30.toString())} icon={Coins} tone="success" hint={`${formatBDT(o.collected30.toString())} collected incl. VAT`} />
+        <StatsCard label="Payment receipts (30 days)" value={formatBDT(o.revenue30.toString())} icon={Coins} tone="success" hint={`Confirmed top-ups excl. VAT · ${formatBDT(o.collected30.toString())} incl. VAT`} />
         <StatsCard label="Pending sender IDs" value={formatNumber(o.pendingSenders)} icon={BadgeCheck} tone="warning" />
         <StatsCard label="Pending payments" value={formatNumber(o.pendingPayments)} icon={CreditCard} tone="warning" />
         <StatsCard label="Failed messages (24h)" value={formatNumber(o.failed24)} icon={CircleAlert} tone="danger" />
@@ -69,8 +78,8 @@ export default async function AdminOverviewPage({ searchParams }: PageProps<"/ad
         </Card>
         <Card className="xl:col-span-3">
           <CardHeader>
-            <CardTitle>Revenue</CardTitle>
-            <CardDescription>Completed top-ups per day, excluding VAT</CardDescription>
+            <CardTitle>Payment receipts</CardTitle>
+            <CardDescription>Confirmed top-ups per day, excluding VAT (cash received, not usage revenue)</CardDescription>
           </CardHeader>
           <CardContent>
             <SpendChart data={o.series} height={200} />
@@ -78,5 +87,78 @@ export default async function AdminOverviewPage({ searchParams }: PageProps<"/ad
         </Card>
       </div>
     </>
+  );
+}
+
+/** Platform-wide dashboard (Laravel admin API): real aggregates, liability kept apart from receipts and revenue. */
+function PlatformSection({ d, range, canFinance }: { d: PlatformDashboard; range: RangeQuery; canFinance: boolean }) {
+  const c = d.customers;
+  const f = d.finance;
+  return (
+    <Card className="mb-6">
+      <CardHeader>
+        <CardTitle>Platform</CardTitle>
+        <CardDescription>{d.range.label} · organizations, SMS and money from database aggregates</CardDescription>
+      </CardHeader>
+      <RangeFilter value={range} />
+      <CardContent className="space-y-6 pt-4">
+        <section aria-label="Customers" className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+          <StatsCard label="Organizations" value={formatNumber(c.total)} icon={Building2} hint={`${formatNumber(c.newInRange)} new in period`} />
+          <StatsCard label="Active" value={formatNumber(c.active)} tone="success" />
+          <StatsCard label="Suspended" value={formatNumber(c.suspended)} tone="danger" />
+          <StatsCard label="Pending verification" value={formatNumber(c.pending)} tone="warning" hint="No member has verified an e-mail" />
+          <StatsCard label="Campaign review required" value={formatNumber(c.underReview)} tone="accent" hint="Account flag: campaigns wait for staff approval" />
+        </section>
+        <section aria-label="SMS" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatsCard label="SMS today" value={formatNumber(d.sms.today.total)} icon={Send} />
+          <StatsCard label="SMS this month" value={formatNumber(d.sms.month.total)} icon={Send} />
+          <StatsCard label="SMS in period" value={formatNumber(d.sms.range.total)} icon={Send} hint={`${formatNumber(d.sms.range.delivered)} delivered · ${formatNumber(d.sms.range.failed)} failed · ${formatNumber(d.sms.range.pending)} pending`} />
+          <StatsCard label="Staff accounts" value={formatNumber(c.activeStaff)} icon={Users} hint={`${formatNumber(c.customerUsers)} customer users`} />
+        </section>
+        {f && canFinance && (
+          <section aria-label="Money" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            <StatsCard label="Wallet liability (now)" value={formatBDT(f.liability.balance)} icon={CreditCard} tone="accent" hint="Prepaid balances owed as SMS — not revenue" />
+            <StatsCard label="Payment receipts" value={formatBDT(f.receipts.net)} icon={Coins} tone="success" hint={`${formatBDT(f.receipts.gross)} incl. VAT`} />
+            <StatsCard label="Refunds" value={formatBDT(f.paymentRefunds.amount)} tone="warning" hint={`${formatBDT(f.usage.smsRefunds)} failed-SMS refunds to wallets`} />
+            <StatsCard label="Usage revenue" value={formatBDT(f.usage.revenue)} tone="primary" hint={f.providerCost.estimatedMargin !== null ? `Est. margin ${formatBDT(f.providerCost.estimatedMargin)} (estimate)` : "Provider costs not configured"} />
+          </section>
+        )}
+        <div className="grid gap-6 lg:grid-cols-2 [&>*]:min-w-0">
+          <div>
+            <h3 className="mb-2 text-sm font-medium">Plan distribution</h3>
+            <ul className="divide-y divide-border rounded-md border border-border text-sm">
+              {d.plans.map((p) => (
+                <li key={p.id ?? "default"} className="flex items-center gap-2 px-4 py-2">
+                  <Link href={`/admin/customers?plan=${p.id ?? "none"}`} className="flex-1 hover:text-primary">
+                    {p.name}
+                  </Link>
+                  {!p.active && <span className="text-xs text-muted-foreground">inactive</span>}
+                  <span className="tabular">{formatNumber(p.organizations)}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-muted-foreground">Subscriptions: {d.subscriptions.note}</p>
+          </div>
+          {d.recentPrivilegedActions && (
+            <div>
+              <h3 className="mb-2 text-sm font-medium">Recent privileged actions</h3>
+              <ul className="divide-y divide-border rounded-md border border-border text-sm">
+                {d.recentPrivilegedActions.map((a) => (
+                  <li key={a.id} className="flex flex-wrap items-center gap-2 px-4 py-2">
+                    <code className="font-mono text-xs">{a.action}</code>
+                    <span className="text-muted-foreground">{a.actor?.name ?? a.actorType.toLowerCase()}</span>
+                    <span className="ml-auto text-xs text-muted-foreground">{a.createdAt ? formatDateTime(a.createdAt) : ""}</span>
+                  </li>
+                ))}
+                {d.recentPrivilegedActions.length === 0 && <li className="px-4 py-3 text-muted-foreground">None yet</li>}
+              </ul>
+              <Link href={`/admin/finance?${rangeParams(range)}`} className="mt-2 inline-block text-xs text-primary hover:underline">
+                Finance details →
+              </Link>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

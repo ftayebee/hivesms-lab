@@ -10,7 +10,8 @@ import { requirePlatform } from "@/lib/auth/session";
 import { platformCan } from "@/lib/auth/permissions";
 import { formatBDT, formatDateTime } from "@/lib/format";
 import { ADMIN_PAGE, listPaymentsForAdmin } from "@/features/admin/service";
-import { reviewPaymentAction } from "@/features/admin/actions";
+import { refundPaymentAction, reviewPaymentAction } from "@/features/admin/actions";
+import { superAdminAvailable } from "@/features/admin/super-admin";
 
 export const metadata = { title: "Payments" };
 
@@ -23,6 +24,7 @@ export default async function AdminPaymentsPage({ searchParams }: PageProps<"/ad
   const page = parsePage(sp.page);
   const { rows, total } = await listPaymentsForAdmin({ status, page });
   const canManage = platformCan(session.user.platformRole, "admin:billing:manage");
+  const canRefund = superAdminAvailable() && platformCan(session.user.platformRole, "admin:payments:refund");
   return (
     <>
       <PageHeader title="Payments" description="Verify manual transfers against your bank statement before approving. Approval credits the wallet and issues an invoice." />
@@ -51,9 +53,23 @@ export default async function AdminPaymentsPage({ searchParams }: PageProps<"/ad
                     <AdminActionButton action={reviewPaymentAction.bind(null, p.id, "approve")} label="Approve" variant="primary" confirmTitle={`Confirm ${formatBDT(p.total.toString())} received?`} confirmDescription={`Reference ${p.manualReference ?? "(none submitted)"}. ${formatBDT(p.creditAmount.toString())} will be credited.`} />
                     <AdminActionButton action={reviewPaymentAction.bind(null, p.id, "reject")} label="Reject" reason="required" variant="destructive" />
                   </div>
-                ) : p.invoice ? (
-                  <span className="text-xs text-muted-foreground">{p.invoice.number}</span>
-                ) : null,
+                ) : (
+                  <div className="flex items-center gap-2">
+                    {p.invoice && <span className="text-xs text-muted-foreground">{p.invoice.number}</span>}
+                    {canRefund && p.status === "SUCCEEDED" && (
+                      <AdminActionButton
+                        action={refundPaymentAction.bind(null, p.id)}
+                        label="Record refund"
+                        variant="ghost"
+                        reason="required"
+                        reasonLabel="Reason (recorded; the customer is notified)"
+                        password
+                        confirmTitle={`Record a refund of ${formatBDT(p.total.toString())}?`}
+                        confirmDescription={`${formatBDT(p.creditAmount.toString())} is removed from the customer's wallet (refused if they already used it) and the payment is marked refunded. Send the money back yourself through the original channel.`}
+                      />
+                    )}
+                  </div>
+                ),
             },
           ]}
         />

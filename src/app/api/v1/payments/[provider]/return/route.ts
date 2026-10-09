@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { logger } from "@/lib/logger";
+import { proxyRoute } from "@/lib/laravel/route";
 import { processPaymentCallback } from "@/services/payments/callbacks";
 
 /**
@@ -27,5 +28,8 @@ async function handle(req: NextRequest, ctx: { params: Promise<{ provider: strin
   return NextResponse.redirect(`${base}/dashboard/wallet?payment=unknown`, 303);
 }
 
-export const GET = handle;
-export const POST = handle;
+/** LARAVEL_FEATURES `webhooks`: Laravel re-validates with the gateway and redirects to the payment page. */
+const viaLaravel = proxyRoute("webhooks", (p) => `payments/${encodeURIComponent(p.provider)}/return`, handle);
+
+export const GET = viaLaravel;
+export const POST = viaLaravel;

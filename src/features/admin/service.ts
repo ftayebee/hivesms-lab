@@ -11,17 +11,50 @@ import { completePayment, failPayment } from "@/services/billing/payments";
 import { notify } from "@/services/notify";
 import { sendEmail } from "@/services/email";
 import { emailTemplates } from "@/services/email/templates";
-import { adminActor, type AdminContext } from "./guard";
+import { adminActor, confirmAdminPassword, type AdminContext } from "./guard";
+import { uniqueViolationTarget } from "@/lib/db-errors";
+import { normalizeBdPhone } from "@/lib/phone";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 
 export const ADMIN_PAGE = 25;
 
 // ─── Customers ───
 
-export async function listOrganizations(q: { q?: string; status?: "ACTIVE" | "SUSPENDED"; page: number; sort?: "newest" | "balance" }) {
+export interface OrganizationFilters {
+  /** Organization name or ID, member e-mail, name or BD mobile number. */
+  q?: string;
+  status?: "ACTIVE" | "SUSPENDED";
+  /** Pricing plan id, or "none" for organizations on the default plan. */
+  planId?: string;
+  /** Registration date range, Dhaka calendar days (YYYY-MM-DD), inclusive. */
+  from?: string;
+  to?: string;
+  review?: boolean;
+  page: number;
+  sort?: "newest" | "balance";
+}
+
+const dhakaDay = (d: string, addDays = 0) => new Date(new Date(`${d}T00:00:00+06:00`).getTime() + addDays * 86_400_000);
+
+export async function listOrganizations(q: OrganizationFilters) {
+  if (laravelEnabled("admin")) return viaLaravel.listOrganizations(q);
+  const phone = q.q ? normalizeBdPhone(q.q) : null;
   const where: Prisma.OrganizationWhereInput = {
     deletedAt: null,
     ...(q.status ? { status: q.status } : {}),
-    ...(q.q ? { OR: [{ name: { contains: q.q } }, { members: { some: { user: { email: { contains: q.q.toLowerCase() } } } } }] } : {}),
+    ...(q.planId ? { pricingPlanId: q.planId === "none" ? null : q.planId } : {}),
+    ...(q.review ? { requireCampaignReview: true } : {}),
+    ...(q.from || q.to ? { createdAt: { ...(q.from ? { gte: dhakaDay(q.from) } : {}), ...(q.to ? { lt: dhakaDay(q.to, 1) } : {}) } } : {}),
+    ...(q.q
+      ? {
+          OR: [
+            { name: { contains: q.q } },
+            { id: q.q },
+            { members: { some: { user: { OR: [{ email: { contains: q.q.toLowerCase() } }, { name: { contains: q.q } }, ...(phone ? [{ phone }] : [])] } } } },
+          ],
+        }
+      : {}),
   };
   const [rows, total] = await Promise.all([
     db.organization.findMany({
@@ -37,6 +70,7 @@ export async function listOrganizations(q: { q?: string; status?: "ACTIVE" | "SU
 }
 
 export async function getOrganizationDetail(id: string) {
+  if (laravelEnabled("admin")) return viaLaravel.getOrganizationDetail(id);
   const org = await db.organization.findFirst({
     where: { id, deletedAt: null },
     include: {
@@ -71,6 +105,7 @@ export const orgControlsSchema = z.object({
 });
 
 export async function updateOrganizationControls(admin: AdminContext, id: string, input: z.infer<typeof orgControlsSchema>) {
+  if (laravelEnabled("admin")) return viaLaravel.updateOrganizationControls(id, input);
   const before = await db.organization.findFirst({ where: { id, deletedAt: null } });
   if (!before) throw notFound("Organization");
   if (input.monthlySendLimit < input.dailySendLimit) throw new AppError("VALIDATION_ERROR", "The monthly limit must be at least the daily limit.", { field: "monthlySendLimit" });
@@ -87,9 +122,10 @@ export async function updateOrganizationControls(admin: AdminContext, id: string
 }
 
 export async function setOrganizationStatus(admin: AdminContext, id: string, status: "ACTIVE" | "SUSPENDED", reason: string | null) {
+  if (laravelEnabled("admin")) return viaLaravel.setOrganizationStatus(id, status, reason);
   const org = await db.organization.findFirst({ where: { id, deletedAt: null } });
   if (!org) throw notFound("Organization");
-  if (status === "SUSPENDED" && !reason) throw new AppError("VALIDATION_ERROR", "Give a reason for the suspension.", { field: "reason" });
+  if (!reason) throw new AppError("VALIDATION_ERROR", status === "SUSPENDED" ? "Give a reason for the suspension." : "Give a reason for reactivating the account.", { field: "reason" });
   await db.organization.update({ where: { id }, data: { status, suspendedReason: status === "SUSPENDED" ? reason : null } });
   if (status === "SUSPENDED") {
     // Stop anything scheduled from starting; queued messages are held by the dispatcher.
@@ -101,24 +137,56 @@ export async function setOrganizationStatus(admin: AdminContext, id: string, sta
 
 export const walletAdjustSchema = z.object({
   direction: z.enum(["CREDIT", "DEBIT"]),
-  amount: z.coerce.number().positive("Enter an amount.").max(10_000_000),
+  // Plain decimal string (no floats, no exponent notation), up to 2 decimals.
+  amount: z
+    .string()
+    .trim()
+    .regex(/^\d{1,8}(\.\d{1,2})?$/, "Enter an amount greater than 0 (up to 2 decimals).")
+    .refine((v) => Number(v) > 0, "Enter an amount greater than 0 (up to 2 decimals)."),
   note: z.string().trim().min(5, "Explain the adjustment (visible to the customer).").max(300),
+  // Generated when the form is rendered: a double submit or retry applies the adjustment once.
+  idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{16,100}$/, "Missing request key. Reload the page and try again."),
+  currentPassword: z.string().min(1, "Confirm with your current password.").max(200),
 });
 
-export async function adjustWallet(admin: AdminContext, orgId: string, input: z.infer<typeof walletAdjustSchema>) {
+/**
+ * Manual credit/debit (super admin only, password re-confirmed, idempotent). Laravel path:
+ * FinanceService::adjust. Prisma path (rollback): same rules — the idempotency key is the unique
+ * ledger reference, so a replay returns the first result and never applies twice.
+ */
+export async function adjustWallet(admin: AdminContext, orgId: string, input: z.infer<typeof walletAdjustSchema>): Promise<{ replayed: boolean }> {
+  if (laravelEnabled("admin")) return viaLaravel.adjustWallet(orgId, input);
+  await confirmAdminPassword(admin, input.currentPassword);
+  const ref = { reason: "ADJUSTMENT" as const, referenceType: "admin_adjustment", referenceId: input.idempotencyKey };
+  const replay = async () => {
+    const tx = await db.walletTransaction.findFirst({ where: ref });
+    if (!tx) return null;
+    if (tx.organizationId !== orgId || tx.type !== input.direction || !tx.amount.equals(input.amount)) {
+      throw new AppError("IDEMPOTENCY_CONFLICT", "This idempotency key was already used for a different adjustment.");
+    }
+    return { replayed: true };
+  };
+  const first = await replay();
+  if (first) return first;
   await ensureWallet(orgId);
-  const reference = crypto.randomUUID();
-  await db.$transaction(async (tx) => {
-    const entry = { organizationId: orgId, amount: input.amount.toFixed(2), reason: "ADJUSTMENT" as const, description: `Adjustment: ${input.note}`, referenceType: "admin_adjustment", referenceId: reference, createdById: admin.userId };
-    if (input.direction === "CREDIT") await creditWallet(tx, entry);
-    else await debitWallet(tx, entry);
-    await audit({ action: "admin.wallet.adjust", actor: adminActor(admin), organizationId: orgId, targetType: "wallet", targetId: orgId, ip: admin.ip, metadata: { direction: input.direction, amount: input.amount, note: input.note } }, tx);
-  });
+  try {
+    await db.$transaction(async (tx) => {
+      const entry = { organizationId: orgId, amount: input.amount, ...ref, description: `Adjustment: ${input.note}`, createdById: admin.userId };
+      if (input.direction === "CREDIT") await creditWallet(tx, entry);
+      else await debitWallet(tx, entry);
+      await audit({ action: "admin.wallet.adjust", actor: adminActor(admin), organizationId: orgId, targetType: "wallet", targetId: orgId, ip: admin.ip, metadata: { direction: input.direction, amount: input.amount, reason: input.note } }, tx);
+    });
+  } catch (err) {
+    if (uniqueViolationTarget(err)) return (await replay()) ?? { replayed: true };
+    throw err;
+  }
+  return { replayed: false };
 }
 
 // ─── Campaign review ───
 
 export async function listCampaignsForAdmin(q: { status?: string; page: number }) {
+  if (laravelEnabled("admin")) return viaLaravel.listCampaigns(q);
   const where: Prisma.CampaignWhereInput = { deletedAt: null, ...(q.status ? { status: q.status as never } : {}) };
   const [rows, total] = await Promise.all([
     db.campaign.findMany({ where, orderBy: q.status === "PENDING_REVIEW" ? { createdAt: "asc" } : { createdAt: "desc" }, skip: (q.page - 1) * ADMIN_PAGE, take: ADMIN_PAGE, include: { organization: { select: { id: true, name: true, createdAt: true } } } }),
@@ -128,6 +196,7 @@ export async function listCampaignsForAdmin(q: { status?: string; page: number }
 }
 
 export async function reviewCampaign(admin: AdminContext, id: string, decision: "approve" | "reject", reason: string | null) {
+  if (laravelEnabled("admin")) return viaLaravel.reviewCampaign(id, decision, reason);
   const c = await db.campaign.findFirst({ where: { id, status: "PENDING_REVIEW" } });
   if (!c) throw new AppError("CONFLICT", "This campaign is not waiting for review.");
   if (decision === "reject" && !reason) throw new AppError("VALIDATION_ERROR", "Give the customer a reason.", { field: "reason" });
@@ -150,6 +219,7 @@ export async function reviewCampaign(admin: AdminContext, id: string, decision: 
 // ─── Sender IDs ───
 
 export async function listSenderIdsForAdmin(q: { status?: string; page: number }) {
+  if (laravelEnabled("admin")) return viaLaravel.listSenderIds(q);
   const where: Prisma.SenderIdWhereInput = q.status ? { status: q.status as never } : {};
   const [rows, total] = await Promise.all([
     db.senderId.findMany({ where, orderBy: q.status === "PENDING" ? { createdAt: "asc" } : { updatedAt: "desc" }, skip: (q.page - 1) * ADMIN_PAGE, take: ADMIN_PAGE, include: { organization: { select: { id: true, name: true, pricingPlan: { select: { senderIdFee: true } } } } } }),
@@ -159,6 +229,7 @@ export async function listSenderIdsForAdmin(q: { status?: string; page: number }
 }
 
 export async function reviewSenderId(admin: AdminContext, id: string, decision: "APPROVED" | "REJECTED" | "SUSPENDED", reason: string | null, providerRef: string | null) {
+  if (laravelEnabled("admin")) return viaLaravel.reviewSenderId(id, decision, reason, providerRef);
   const s = await db.senderId.findUnique({ where: { id }, include: { organization: { include: { pricingPlan: true } } } });
   if (!s) throw notFound("Sender ID");
   if (decision !== "APPROVED" && !reason) throw new AppError("VALIDATION_ERROR", "Give the customer a reason.", { field: "reason" });
@@ -194,6 +265,7 @@ export async function reviewSenderId(admin: AdminContext, id: string, decision: 
 // ─── Payments ───
 
 export async function listPaymentsForAdmin(q: { status?: string; page: number }) {
+  if (laravelEnabled("admin")) return viaLaravel.listPayments(q);
   const where: Prisma.PaymentWhereInput = q.status ? { status: q.status as never } : {};
   const [rows, total] = await Promise.all([
     db.payment.findMany({ where, orderBy: { createdAt: "desc" }, skip: (q.page - 1) * ADMIN_PAGE, take: ADMIN_PAGE, include: { organization: { select: { id: true, name: true } }, invoice: { select: { number: true } } } }),
@@ -203,6 +275,7 @@ export async function listPaymentsForAdmin(q: { status?: string; page: number })
 }
 
 export async function reviewManualPayment(admin: AdminContext, id: string, decision: "approve" | "reject", reason: string | null) {
+  if (laravelEnabled("admin")) return viaLaravel.reviewManualPayment(id, decision, reason);
   const p = await db.payment.findUnique({ where: { id } });
   if (!p) throw notFound("Payment");
   if (p.provider !== "manual") throw new AppError("VALIDATION_ERROR", "Only manual payments are verified here.");
@@ -218,6 +291,7 @@ export async function reviewManualPayment(admin: AdminContext, id: string, decis
 // ─── Support ───
 
 export async function listTicketsForAdmin(q: { status?: TicketStatus; mine?: string; page: number }) {
+  if (laravelEnabled("admin")) return viaLaravel.listTickets({ status: q.status, mine: Boolean(q.mine), page: q.page });
   const where: Prisma.SupportTicketWhereInput = { ...(q.status ? { status: q.status } : { status: { not: "CLOSED" } }), ...(q.mine ? { assignedToId: q.mine } : {}) };
   const [rows, total] = await Promise.all([
     db.supportTicket.findMany({
@@ -233,6 +307,7 @@ export async function listTicketsForAdmin(q: { status?: TicketStatus; mine?: str
 }
 
 export async function getTicketForAdmin(id: string) {
+  if (laravelEnabled("admin")) return viaLaravel.getTicket(id);
   const t = await db.supportTicket.findUnique({
     where: { id },
     include: {
@@ -253,6 +328,7 @@ export const staffReplySchema = z.object({
 });
 
 export async function staffReply(admin: AdminContext, id: string, input: z.infer<typeof staffReplySchema>) {
+  if (laravelEnabled("admin")) return viaLaravel.staffReply(id, input);
   const t = await db.supportTicket.findUnique({ where: { id }, include: { createdBy: { select: { email: true, id: true } } } });
   if (!t) throw notFound("Ticket");
   const status = input.status ?? (input.internal ? t.status : "WAITING_FOR_CUSTOMER");
@@ -276,6 +352,7 @@ export async function staffReply(admin: AdminContext, id: string, input: z.infer
 }
 
 export async function setTicketStatus(admin: AdminContext, id: string, status: TicketStatus, assignToMe: boolean) {
+  if (laravelEnabled("admin")) return viaLaravel.setTicketStatus(id, status, assignToMe);
   const t = await db.supportTicket.findUnique({ where: { id } });
   if (!t) throw notFound("Ticket");
   await db.supportTicket.update({ where: { id }, data: { status, ...(assignToMe ? { assignedToId: admin.userId } : {}), ...(status === "CLOSED" ? { closedAt: new Date() } : {}) } });
@@ -285,6 +362,7 @@ export async function setTicketStatus(admin: AdminContext, id: string, status: T
 // ─── Users (platform) ───
 
 export async function listUsers(q: { q?: string; role?: string; page: number }) {
+  if (laravelEnabled("admin")) return viaLaravel.listUsers(q);
   const where: Prisma.UserWhereInput = {
     deletedAt: null,
     ...(q.role ? { platformRole: q.role as never } : {}),
@@ -297,27 +375,47 @@ export async function listUsers(q: { q?: string; role?: string; page: number }) 
   return { rows, total };
 }
 
-export async function updateUserAccess(admin: AdminContext, userId: string, input: { platformRole?: "USER" | "SUPPORT" | "ADMIN" | "SUPER_ADMIN"; status?: "ACTIVE" | "SUSPENDED" }) {
+export interface UserAccessInput {
+  platformRole?: "USER" | "SUPPORT" | "ADMIN" | "SUPER_ADMIN";
+  status?: "ACTIVE" | "SUSPENDED";
+  reason: string;
+  currentPassword: string;
+}
+
+/**
+ * Staff access change (super admin only; Laravel path: StaffService). Never on yourself; the last
+ * active super admin can be neither demoted nor suspended (owner rows locked first); reason and
+ * password confirmation are required; audited with before/after; the user is signed out.
+ */
+export async function updateUserAccess(admin: AdminContext, userId: string, input: UserAccessInput) {
   if (userId === admin.userId) throw new AppError("FORBIDDEN", "You can't change your own access.");
-  const u = await db.user.findUnique({ where: { id: userId } });
-  if (!u) throw notFound("User");
-  if (input.platformRole && u.platformRole === "SUPER_ADMIN" && input.platformRole !== "SUPER_ADMIN") {
-    const supers = await db.user.count({ where: { platformRole: "SUPER_ADMIN", status: "ACTIVE", deletedAt: null } });
-    if (supers <= 1) throw new AppError("CONFLICT", "At least one super admin must remain.");
-  }
-  await db.user.update({ where: { id: userId }, data: input });
+  if (laravelEnabled("admin")) return viaLaravel.updateUserAccess(userId, input);
+  await confirmAdminPassword(admin, input.currentPassword);
+  const after = { ...(input.platformRole ? { platformRole: input.platformRole } : {}), ...(input.status ? { status: input.status } : {}) };
+  await db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM users WHERE platformRole = 'SUPER_ADMIN' AND status = 'ACTIVE' FOR UPDATE`;
+    const u = await tx.user.findUnique({ where: { id: userId } });
+    if (!u) throw notFound("User");
+    const losesOwner = u.platformRole === "SUPER_ADMIN" && u.status === "ACTIVE" && ((input.platformRole && input.platformRole !== "SUPER_ADMIN") || input.status === "SUSPENDED");
+    if (losesOwner && (await tx.user.count({ where: { platformRole: "SUPER_ADMIN", status: "ACTIVE", deletedAt: null } })) <= 1) {
+      throw new AppError("CONFLICT", "At least one active super admin must remain. Promote a replacement first.");
+    }
+    await tx.user.update({ where: { id: userId }, data: after });
+    await audit({ action: "admin.user.access_update", actor: adminActor(admin), targetType: "user", targetId: userId, ip: admin.ip, userAgent: admin.userAgent, metadata: { before: { platformRole: u.platformRole, status: u.status }, after, reason: input.reason } }, tx);
+  });
   if (input.status === "SUSPENDED" || input.platformRole) await revokeAllUserSessions(userId);
-  await audit({ action: "admin.user.access_update", actor: adminActor(admin), targetType: "user", targetId: userId, ip: admin.ip, metadata: { before: { role: u.platformRole, status: u.status }, after: input } });
 }
 
 // ─── Abuse reports & leads ───
 
 export async function setAbuseStatus(admin: AdminContext, id: string, status: AbuseReportStatus, note: string | null) {
+  if (laravelEnabled("admin")) return viaLaravel.setAbuseStatus(id, status, note);
   const r = await db.abuseReport.update({ where: { id }, data: { status, resolutionNote: note, handledById: admin.userId } });
   await audit({ action: "admin.abuse.update", actor: adminActor(admin), organizationId: r.organizationId, targetType: "abuse_report", targetId: id, metadata: { status } });
 }
 
 export async function setLeadStatus(admin: AdminContext, id: string, status: LeadStatus) {
+  if (laravelEnabled("admin")) return viaLaravel.setLeadStatus(id, status);
   await db.contactRequest.update({ where: { id }, data: { status } });
   await audit({ action: "admin.lead.update", actor: adminActor(admin), targetType: "contact_request", targetId: id, metadata: { status } });
 }

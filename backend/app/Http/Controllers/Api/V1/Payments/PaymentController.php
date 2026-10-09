@@ -7,6 +7,7 @@ use App\Http\Requests\Billing\ManualReferenceRequest;
 use App\Http\Requests\Billing\TopUpRequest;
 use App\Http\Resources\PaymentResource;
 use App\Services\Payment\PaymentProviderManager;
+use App\Services\Platform\SettingsService;
 use App\Services\Wallet\BillingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,9 +21,21 @@ class PaymentController extends ApiController
 {
     public function __construct(private readonly BillingService $billing) {}
 
-    public function methods(PaymentProviderManager $providers): JsonResponse
+    /** GET /app/payments/methods: enabled providers, active packages and the top-up rules the wallet page shows. */
+    public function methods(PaymentProviderManager $providers, SettingsService $settings): JsonResponse
     {
-        return $this->ok(['providers' => $providers->available(), 'packages' => $this->billing->packages()]);
+        $policy = $settings->billingPolicy();
+
+        return $this->ok([
+            'providers' => $providers->available(),
+            'packages' => $this->billing->packages(),
+            'policy' => [
+                'vatRatePercent' => $policy['vatRatePercent'],
+                'minimumTopUp' => $policy['minimumTopUp'],
+                'maximumTopUp' => $policy['maximumTopUp'],
+                'balanceValidityMonths' => $policy['balanceValidityMonths'],
+            ],
+        ]);
     }
 
     public function preview(TopUpRequest $request): JsonResponse
@@ -48,9 +61,13 @@ class PaymentController extends ApiController
         return $this->ok(['payment' => (new PaymentResource($r['payment']->load('invoice:id,paymentId,number')))->resolve($request), 'checkout' => $r['checkout']], 201);
     }
 
-    public function show(Request $request, string $id): JsonResponse
+    /** GET /app/payments/{id}; manual payments carry the admin-configured transfer instructions in meta. */
+    public function show(Request $request, string $id, SettingsService $settings): JsonResponse
     {
-        return $this->resource($request, PaymentResource::class, $this->billing->payment($this->tenant($request), $id));
+        $payment = $this->billing->payment($this->tenant($request), $id);
+        $meta = $payment->provider === 'manual' ? ['manualInstructions' => $settings->paymentSettings()['manualInstructions']] : [];
+
+        return $this->resource($request, PaymentResource::class, $payment, 200, $meta);
     }
 
     public function submitReference(ManualReferenceRequest $request, string $id): JsonResponse

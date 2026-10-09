@@ -11,6 +11,8 @@ import { encryptSecret, randomToken } from "@/lib/crypto";
 import { assertAcceptableUrl } from "@/lib/safe-url";
 import { notify } from "@/services/notify";
 import { WEBHOOK_EVENTS } from "@/services/messaging/outbound-webhooks";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 
 // ─── API keys ───
 
@@ -37,11 +39,13 @@ export const apiKeySchema = z.object({
 
 export async function listApiKeys(ctx: TenantContext) {
   requirePermission(ctx, "api_keys:read");
+  if (laravelEnabled("developers")) return viaLaravel.listApiKeys();
   return db.apiKey.findMany({ where: { organizationId: ctx.organizationId }, orderBy: [{ status: "asc" }, { createdAt: "desc" }] });
 }
 
 export async function createApiKey(ctx: TenantContext, input: z.infer<typeof apiKeySchema>) {
   requirePermission(ctx, "api_keys:manage");
+  if (laravelEnabled("developers")) return viaLaravel.createApiKey(input);
   const active = await db.apiKey.count({ where: { organizationId: ctx.organizationId, status: "ACTIVE" } });
   if (active >= 25) throw new AppError("VALIDATION_ERROR", "You can have at most 25 active keys. Revoke unused keys first.");
   const { prefix, fullKey, keyHash } = generateApiKey();
@@ -65,6 +69,7 @@ export async function createApiKey(ctx: TenantContext, input: z.infer<typeof api
 
 export async function revokeApiKey(ctx: TenantContext, id: string) {
   requirePermission(ctx, "api_keys:manage");
+  if (laravelEnabled("developers")) return viaLaravel.revokeApiKey(id);
   const k = await db.apiKey.findFirst({ where: { id, organizationId: ctx.organizationId } });
   if (!k) throw notFound("API key");
   if (k.status === "REVOKED") return;
@@ -77,6 +82,7 @@ export const API_LOG_PAGE = 30;
 
 export async function listApiLogs(ctx: TenantContext, opts: { page: number; status?: "2xx" | "4xx" | "5xx"; keyId?: string }) {
   requirePermission(ctx, "api_keys:read");
+  if (laravelEnabled("developers")) return viaLaravel.listApiLogs(opts);
   const where: Prisma.ApiLogWhereInput = {
     organizationId: ctx.organizationId,
     ...(opts.keyId ? { apiKeyId: opts.keyId } : {}),
@@ -107,6 +113,7 @@ export const webhookSchema = z.object({
 
 export async function listWebhooks(ctx: TenantContext) {
   requirePermission(ctx, "api_keys:read");
+  if (laravelEnabled("developers")) return viaLaravel.listWebhooks();
   return db.webhookEndpoint.findMany({
     where: { organizationId: ctx.organizationId },
     orderBy: { createdAt: "desc" },
@@ -116,6 +123,7 @@ export async function listWebhooks(ctx: TenantContext) {
 
 export async function createWebhook(ctx: TenantContext, input: z.infer<typeof webhookSchema>) {
   requirePermission(ctx, "api_keys:manage");
+  if (laravelEnabled("developers")) return viaLaravel.createWebhook(input);
   assertAcceptableUrl(input.url);
   const count = await db.webhookEndpoint.count({ where: { organizationId: ctx.organizationId } });
   if (count >= 10) throw new AppError("VALIDATION_ERROR", "You can register at most 10 webhook endpoints.");
@@ -135,6 +143,7 @@ async function ownWebhook(ctx: TenantContext, id: string) {
 
 export async function toggleWebhook(ctx: TenantContext, id: string, active: boolean) {
   requirePermission(ctx, "api_keys:manage");
+  if (laravelEnabled("developers")) return viaLaravel.toggleWebhook(id, active);
   await ownWebhook(ctx, id);
   await db.webhookEndpoint.update({ where: { id }, data: { active, ...(active ? { failureCount: 0 } : {}) } });
   await audit({ action: active ? "webhook.enable" : "webhook.disable", actor: actorOf(ctx), organizationId: ctx.organizationId, targetType: "webhook", targetId: id });
@@ -142,6 +151,7 @@ export async function toggleWebhook(ctx: TenantContext, id: string, active: bool
 
 export async function deleteWebhook(ctx: TenantContext, id: string) {
   requirePermission(ctx, "api_keys:manage");
+  if (laravelEnabled("developers")) return viaLaravel.deleteWebhook(id);
   await ownWebhook(ctx, id);
   await db.webhookEndpoint.delete({ where: { id } });
   await audit({ action: "webhook.delete", actor: actorOf(ctx), organizationId: ctx.organizationId, targetType: "webhook", targetId: id });
@@ -150,6 +160,7 @@ export async function deleteWebhook(ctx: TenantContext, id: string) {
 /** Queues a sample event so customers can test their endpoint. */
 export async function sendTestWebhook(ctx: TenantContext, id: string) {
   requirePermission(ctx, "api_keys:manage");
+  if (laravelEnabled("developers")) return viaLaravel.sendTestWebhook(id);
   const ep = await ownWebhook(ctx, id);
   await db.webhookDelivery.create({
     data: {

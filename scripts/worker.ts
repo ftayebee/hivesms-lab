@@ -11,11 +11,17 @@
 import "dotenv/config";
 import { logger } from "@/lib/logger";
 import { runHousekeeping, runWorkerTick } from "@/services/messaging/worker";
+import { laravelEnabled } from "@/lib/laravel/flags";
 
 const INTERVAL_MS = Number(process.env.WORKER_INTERVAL_MS ?? 2000);
 let stopping = false;
 
 async function loop() {
+  if (laravelEnabled("worker")) {
+    // LARAVEL_FEATURES `worker`: Laravel's scheduler (php artisan schedule:run → sms:work) is the only background processor.
+    logger.info("worker not started: background processing is handled by the Laravel scheduler");
+    process.exit(0);
+  }
   logger.info({ intervalMs: INTERVAL_MS, provider: process.env.SMS_PROVIDER ?? "mock" }, "worker started");
   while (!stopping) {
     try {

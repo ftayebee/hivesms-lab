@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { MailCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/misc";
 import { verifyEmailToken } from "@/features/auth/service";
 import { isAppError } from "@/lib/errors";
+import { laravel, isLaravelApiError } from "@/lib/laravel-api";
+import { laravelEnabled } from "@/lib/laravel/flags";
 import { pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({ title: "Verify your email", description: "Confirm your email address.", path: "/verify-email", noindex: true });
@@ -17,10 +20,15 @@ async function confirm(formData: FormData) {
   "use server";
   const token = String(formData.get("token") ?? "");
   try {
-    await verifyEmailToken(token);
+    if (laravelEnabled("auth")) await laravel.post("auth/email/verify", { token }, { auth: false });
+    else await verifyEmailToken(token);
   } catch (err) {
-    redirect(`/verify-email?error=${encodeURIComponent(isAppError(err) ? err.message : "Verification failed.")}`);
+    const message = isAppError(err) ? err.message : isLaravelApiError(err) && err.status < 500 ? err.userMessage : "Verification failed.";
+    redirect(`/verify-email?error=${encodeURIComponent(message)}`);
   }
+  // The redirect is a client-side navigation: drop the cached dashboard layout so the
+  // "verify your email" banner reflects the new state.
+  revalidatePath("/dashboard", "layout");
   redirect("/dashboard?verified=1");
 }
 

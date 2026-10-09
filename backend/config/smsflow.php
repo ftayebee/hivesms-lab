@@ -111,6 +111,10 @@ return [
         'dashboard_per_user' => ['limit' => (int) env('DASHBOARD_RATE_LIMIT_PER_MINUTE', 300), 'window' => 60],
         'dashboard_send_per_user' => ['limit' => 30, 'window' => 60],
         'admin_write_per_user' => ['limit' => 120, 'window' => 60],
+        // Password confirmation for privileged admin actions: failed attempts per staff user.
+        'admin_reauth_failures' => ['limit' => 5, 'window' => 900],
+        // Privileged mutations (staff access, wallet adjustments, refunds, provider costs) per staff user.
+        'admin_privileged_per_user' => ['limit' => 20, 'window' => 600],
     ],
 
     'uploads' => [

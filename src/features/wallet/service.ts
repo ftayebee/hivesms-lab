@@ -10,6 +10,12 @@ import { toCsv } from "@/lib/csv";
 import { getBillingPolicy } from "@/services/settings";
 import { getPaymentProvider } from "@/services/payments";
 import type { DateRange } from "@/features/reports/range";
+import { getBalanceSummary } from "@/features/reports/queries";
+import { getActivePackages } from "@/services/billing/pricing";
+import { getPaymentSettings } from "@/services/settings";
+import { listAvailablePaymentProviders } from "@/services/payments";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 
 export const topUpSchema = z
   .object({
@@ -26,6 +32,20 @@ export const topUpSchema = z
 export type TopUpInput = z.infer<typeof topUpSchema>;
 
 export async function previewTopUp(input: { packageId?: string; amount?: number }) {
+  if (laravelEnabled("payments")) {
+    const b = await viaLaravel.previewTopUp(input);
+    return {
+      subtotal: new Decimal(b.subtotal),
+      vatRate: new Decimal(b.vatRate),
+      vatAmount: new Decimal(b.vatAmount),
+      total: new Decimal(b.total),
+      bonus: new Decimal(b.bonus),
+      creditAmount: new Decimal(b.creditAmount),
+      packageId: b.packageId,
+      label: b.label,
+      bonusPercent: new Decimal(b.bonusPercent),
+    };
+  }
   const policy = await getBillingPolicy();
   let amount: Decimal;
   let bonus = new Decimal(0);
@@ -50,6 +70,7 @@ export async function previewTopUp(input: { packageId?: string; amount?: number 
 export async function createTopUp(ctx: TenantContext, input: TopUpInput, customer: { name: string; email: string; phone: string | null }) {
   requirePermission(ctx, "billing:manage");
   assertOrgActive(ctx);
+  if (laravelEnabled("payments")) return viaLaravel.createTopUp(input, ctx);
   const provider = await getPaymentProvider(input.provider);
   if (!provider) throw new AppError("VALIDATION_ERROR", "That payment method is not available.", { field: "provider" });
   const b = await previewTopUp(input);
@@ -95,8 +116,20 @@ export async function createTopUp(ctx: TenantContext, input: TopUpInput, custome
   return { payment, result };
 }
 
+/** Payment page: the payment plus the manual-transfer instructions to show for manual payments. */
+export async function getPaymentForPage(ctx: TenantContext, id: string) {
+  requirePermission(ctx, "billing:read");
+  if (laravelEnabled("wallet")) {
+    const { manualInstructions, ...payment } = await viaLaravel.getPayment(id);
+    return { payment, manualInstructions: manualInstructions ?? "" };
+  }
+  const [payment, settings] = await Promise.all([getOwnPayment(ctx, id), getPaymentSettings()]);
+  return { payment, manualInstructions: settings.manualInstructions };
+}
+
 export async function getOwnPayment(ctx: TenantContext, id: string) {
   requirePermission(ctx, "billing:read");
+  if (laravelEnabled("wallet")) return viaLaravel.getPayment(id);
   const p = await db.payment.findFirst({ where: { id, organizationId: ctx.organizationId }, include: { invoice: { select: { id: true, number: true } } } });
   if (!p) throw notFound("Payment");
   return p;
@@ -104,6 +137,7 @@ export async function getOwnPayment(ctx: TenantContext, id: string) {
 
 export async function submitManualReference(ctx: TenantContext, id: string, reference: string) {
   requirePermission(ctx, "billing:manage");
+  if (laravelEnabled("payments")) return viaLaravel.submitManualReference(id, reference);
   const p = await getOwnPayment(ctx, id);
   if (p.provider !== "manual") throw new AppError("VALIDATION_ERROR", "This payment does not use manual verification.");
   const r = await db.payment.updateMany({ where: { id, status: { in: ["PENDING", "AWAITING_VERIFICATION"] } }, data: { status: "AWAITING_VERIFICATION", manualReference: reference } });
@@ -113,10 +147,29 @@ export async function submitManualReference(ctx: TenantContext, id: string, refe
 
 export async function cancelPendingPayment(ctx: TenantContext, id: string) {
   requirePermission(ctx, "billing:manage");
+  if (laravelEnabled("payments")) return viaLaravel.cancelPendingPayment(id);
   await getOwnPayment(ctx, id);
   const r = await db.payment.updateMany({ where: { id, status: "PENDING" }, data: { status: "CANCELLED", failureReason: "Cancelled by customer" } });
   if (!r.count) throw new AppError("CONFLICT", "Only unpaid payments can be cancelled.");
   await audit({ action: "payment.cancelled", actor: actorOf(ctx), organizationId: ctx.organizationId, targetType: "payment", targetId: id });
+}
+
+/** Wallet page: balance summary, top-up rules, packages, providers, recent payments and invoices. */
+export async function loadWalletPage(ctx: TenantContext, canManage: boolean) {
+  requirePermission(ctx, "billing:read");
+  if (laravelEnabled("wallet")) {
+    const w = await viaLaravel.loadWalletPage();
+    return { ...w, providers: canManage ? w.providers : [] };
+  }
+  const [summary, policy, packages, providers, payments, invoices] = await Promise.all([
+    getBalanceSummary(ctx),
+    getBillingPolicy(),
+    getActivePackages(),
+    canManage ? listAvailablePaymentProviders() : Promise.resolve([]),
+    listPayments(ctx, 10),
+    listInvoices(ctx, 20),
+  ]);
+  return { summary, policy, packages, providers, payments, invoices };
 }
 
 export async function listPayments(ctx: TenantContext, take = 20) {
@@ -131,6 +184,7 @@ export async function listInvoices(ctx: TenantContext, take = 50) {
 
 export async function getInvoice(ctx: TenantContext, id: string) {
   requirePermission(ctx, "billing:read");
+  if (laravelEnabled("wallet")) return viaLaravel.getInvoice(id);
   const inv = await db.invoice.findFirst({ where: { id, organizationId: ctx.organizationId }, include: { payment: { select: { method: true, providerRef: true, manualReference: true, completedAt: true, creditAmount: true } } } });
   if (!inv) throw notFound("Invoice");
   return inv;
@@ -149,6 +203,7 @@ function txWhere(ctx: TenantContext, range: DateRange, f: z.infer<typeof txFilte
 
 export async function listTransactions(ctx: TenantContext, range: DateRange, f: z.infer<typeof txFilterSchema>, page: number) {
   requirePermission(ctx, "billing:read");
+  if (laravelEnabled("wallet")) return viaLaravel.listTransactions(range, f, page);
   const where = txWhere(ctx, range, f);
   const [rows, total, sums] = await Promise.all([
     db.walletTransaction.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * TX_PAGE_SIZE, take: TX_PAGE_SIZE }),
@@ -171,6 +226,7 @@ export async function exportTransactionsCsv(ctx: TenantContext, range: DateRange
 
 export async function updateLowBalanceThreshold(ctx: TenantContext, threshold: number) {
   requirePermission(ctx, "billing:manage");
+  if (laravelEnabled("wallet")) return viaLaravel.updateLowBalanceThreshold(threshold);
   await db.wallet.update({ where: { organizationId: ctx.organizationId }, data: { lowBalanceThreshold: threshold.toFixed(2), lowBalanceNotifiedAt: null } });
   await audit({ action: "wallet.threshold_update", actor: actorOf(ctx), organizationId: ctx.organizationId, metadata: { threshold } });
 }

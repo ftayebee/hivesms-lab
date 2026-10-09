@@ -7,6 +7,7 @@ use App\Exceptions\AppException;
 use App\Jobs\LaunchCampaignJob;
 use App\Mail\EmailTemplates;
 use App\Models\AbuseReport;
+use App\Models\ApiKey;
 use App\Models\ApiLog;
 use App\Models\AuditLog;
 use App\Models\Campaign;
@@ -20,7 +21,6 @@ use App\Models\SupportMessage;
 use App\Models\SupportTicket;
 use App\Models\User;
 use App\Models\WalletTransaction;
-use App\Services\Auth\SessionService;
 use App\Services\Payment\PaymentService;
 use App\Services\Platform\AuditLogger;
 use App\Services\Platform\NotificationService;
@@ -28,9 +28,9 @@ use App\Services\Wallet\WalletService;
 use App\Support\Dhaka;
 use App\Support\ErrorCode;
 use App\Support\Money;
+use App\Support\Phone;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 /** Platform staff operations (port of features/admin/service.ts + overview.ts). */
 class AdminService
@@ -42,7 +42,6 @@ class AdminService
         private readonly WalletService $wallet,
         private readonly PaymentService $payments,
         private readonly NotificationService $notifications,
-        private readonly SessionService $sessions,
     ) {}
 
     // ─── Overview ───
@@ -93,12 +92,26 @@ class AdminService
 
     // ─── Customers ───
 
-    public function organizations(?string $q, ?string $status, int $page, string $sort = 'newest'): LengthAwarePaginator
+    /**
+     * q matches the organization name or ID, a member's e-mail, name or (normalised) phone.
+     *
+     * @param  array{q?: ?string, status?: ?string, planId?: ?string, from?: ?string, to?: ?string, review?: ?bool}  $f
+     */
+    public function organizations(array $f, int $page, string $sort = 'newest'): LengthAwarePaginator
     {
+        $like = fn (string $s) => '%'.addcslashes($s, '%_\\').'%';
+        $q = isset($f['q']) ? trim((string) $f['q']) : '';
+        $phone = $q !== '' ? Phone::normalize($q) : null;
         $query = Organization::query()
-            ->when($status, fn ($w, $s) => $w->where('organizations.status', $s))
-            ->when($q, fn ($w, $s) => $w->where(fn ($x) => $x->where('organizations.name', 'like', '%'.addcslashes($s, '%_\\').'%')
-                ->orWhereHas('members.user', fn ($u) => $u->where('email', 'like', '%'.addcslashes(strtolower($s), '%_\\').'%'))))
+            ->when($f['status'] ?? null, fn ($w, $s) => $w->where('organizations.status', $s))
+            ->when($f['planId'] ?? null, fn ($w, $p) => $p === 'none' ? $w->whereNull('organizations.pricingPlanId') : $w->where('organizations.pricingPlanId', $p))
+            ->when($f['review'] ?? null, fn ($w) => $w->where('organizations.requireCampaignReview', true))
+            ->when($f['from'] ?? null, fn ($w, $d) => $w->where('organizations.createdAt', '>=', $d))
+            ->when($f['to'] ?? null, fn ($w, $d) => $w->where('organizations.createdAt', '<', $d))
+            ->when($q !== '', fn ($w) => $w->where(fn ($x) => $x->where('organizations.name', 'like', $like($q))
+                ->orWhere('organizations.id', $q)
+                ->orWhereHas('members.user', fn ($u) => $u->where(fn ($m) => $m->where('email', 'like', $like(strtolower($q)))->orWhere('name', 'like', $like($q))
+                    ->when($phone, fn ($ph) => $ph->orWhere('phone', $phone))))))
             ->with(['wallet:id,organizationId,balance', 'pricingPlan:id,name'])
             ->withCount(['members', 'messages']);
         if ($sort === 'balance') {
@@ -114,7 +127,7 @@ class AdminService
     {
         $org = Organization::query()->with([
             'wallet', 'pricingPlan',
-            'members' => fn ($q) => $q->with(['user' => fn ($u) => $u->withTrashed()->select(['id', 'name', 'email', 'lastLoginAt', 'status']), 'role:id,name']),
+            'members' => fn ($q) => $q->with(['user' => fn ($u) => $u->withTrashed()->select(['id', 'name', 'email', 'lastLoginAt', 'status', 'emailVerifiedAt', 'phoneVerifiedAt']), 'role:id,name']),
             'senderIds' => fn ($q) => $q->orderByDesc('createdAt'),
         ])->find($id) ?? throw new AppException(ErrorCode::NOT_FOUND, 'Organization not found.');
         $since = now()->subDays(30)->format('Y-m-d H:i:s.v');
@@ -127,6 +140,20 @@ class AdminService
             'sent30' => Message::query()->where('organizationId', $id)->where('createdAt', '>=', $since)->count(),
             'failed30' => Message::query()->where('organizationId', $id)->where('createdAt', '>=', $since)->whereIn('status', ['FAILED', 'REJECTED', 'EXPIRED'])->count(),
             'audits' => AuditLog::query()->with('actor:id,name')->where('organizationId', $id)->orderByDesc('createdAt')->limit(15)->get(),
+            // Key metadata only: the hash is never selected.
+            'apiKeys' => ApiKey::query()->where('organizationId', $id)->orderByDesc('createdAt')->limit(20)
+                ->get(['id', 'name', 'prefix', 'scopes', 'status', 'lastUsedAt', 'expiresAt', 'revokedAt', 'createdAt']),
+            'tickets' => SupportTicket::query()->where('organizationId', $id)->orderByDesc('createdAt')->limit(10)
+                ->get(['id', 'number', 'subject', 'status', 'priority', 'createdAt', 'lastReplyAt']),
+            'statusTotals30' => Message::query()->where('organizationId', $id)->where('createdAt', '>=', $since)
+                ->selectRaw('status, COUNT(*) AS count, CAST(COALESCE(SUM(cost), 0) AS CHAR) AS cost')->groupBy('status')->get()
+                ->mapWithKeys(fn ($r) => [$r->status->value => ['count' => (int) $r->count, 'cost' => Money::round((string) $r->cost, 2)]]),
+            'verification' => $org->members->map(fn ($m) => [
+                'userId' => $m->userId, 'emailVerified' => (bool) $m->user?->emailVerifiedAt, 'phoneVerified' => (bool) $m->user?->phoneVerifiedAt,
+            ])->values(),
+            'planHistory' => AuditLog::query()->with('actor:id,name')->where('organizationId', $id)->where('action', 'admin.organization.controls_update')
+                ->orderByDesc('createdAt')->limit(20)->get()
+                ->filter(fn ($a) => ($a->metadata['before']['plan'] ?? null) !== ($a->metadata['after']['pricingPlanId'] ?? null))->values(),
         ];
     }
 
@@ -148,34 +175,21 @@ class AdminService
     public function setOrganizationStatus(AdminContext $admin, string $id, string $status, ?string $reason): void
     {
         $org = Organization::query()->find($id) ?? throw new AppException(ErrorCode::NOT_FOUND, 'Organization not found.');
-        if ($status === 'SUSPENDED' && ! $reason) {
-            throw new AppException(ErrorCode::VALIDATION_ERROR, 'Give a reason for the suspension.', ['field' => 'reason']);
+        if (! $reason) {
+            throw new AppException(ErrorCode::VALIDATION_ERROR, $status === 'SUSPENDED' ? 'Give a reason for the suspension.' : 'Give a reason for reactivating the account.', ['field' => 'reason']);
         }
-        DB::transaction(function () use ($org, $status, $reason, $id) {
+        if ($org->status->value === $status) {
+            throw new AppException(ErrorCode::CONFLICT, $status === 'SUSPENDED' ? 'The account is already suspended.' : 'The account is already active.');
+        }
+        $before = $org->status->value;
+        DB::transaction(function () use ($org, $status, $reason, $id, $admin, $before) {
             $org->forceFill(['status' => $status, 'suspendedReason' => $status === 'SUSPENDED' ? $reason : null])->save();
             if ($status === 'SUSPENDED') {
                 // Nothing scheduled may start; queued messages are held by the dispatcher (org not ACTIVE).
                 // API keys stay but are rejected while the organization is suspended.
                 Campaign::query()->where('organizationId', $id)->whereIn('status', ['SCHEDULED', 'PROCESSING'])->update(['status' => 'PAUSED', 'pausedAt' => now()->format('Y-m-d H:i:s.v')]);
             }
-        });
-        $this->audit->log($status === 'SUSPENDED' ? 'admin.organization.suspend' : 'admin.organization.activate', $admin->actor(), $id, 'organization', $id, ['reason' => $reason], $admin->ip);
-    }
-
-    /** Manual wallet adjustment (credit or debit), audited in the same transaction. */
-    public function adjustWallet(AdminContext $admin, string $orgId, string $direction, string $amount, string $note): void
-    {
-        if (! Organization::query()->whereKey($orgId)->exists()) {
-            throw new AppException(ErrorCode::NOT_FOUND, 'Organization not found.');
-        }
-        $this->wallet->ensureWallet($orgId);
-        DB::transaction(function () use ($admin, $orgId, $direction, $amount, $note) {
-            $entry = [
-                'organizationId' => $orgId, 'amount' => Money::round($amount, 2), 'reason' => 'ADJUSTMENT', 'description' => "Adjustment: {$note}",
-                'referenceType' => 'admin_adjustment', 'referenceId' => (string) Str::uuid(), 'createdById' => $admin->userId,
-            ];
-            $direction === 'CREDIT' ? $this->wallet->credit($entry) : $this->wallet->debit($entry);
-            $this->audit->log('admin.wallet.adjust', $admin->actor(), $orgId, 'wallet', $orgId, ['direction' => $direction, 'amount' => (float) $amount, 'note' => $note], $admin->ip);
+            $this->audit->log($status === 'SUSPENDED' ? 'admin.organization.suspend' : 'admin.organization.activate', $admin->actor(), $id, 'organization', $id, ['reason' => $reason, 'before' => $before, 'after' => $status], $admin->ip, $admin->userAgent);
         });
     }
 
@@ -348,34 +362,11 @@ class AdminService
             ->orderByDesc('createdAt')->paginate(self::PAGE_SIZE, ['*'], 'page', $page);
     }
 
-    /** @param array{platformRole?: ?string, status?: ?string} $input */
-    public function updateUserAccess(AdminContext $admin, string $userId, array $input): User
-    {
-        if ($userId === $admin->userId) {
-            throw new AppException(ErrorCode::FORBIDDEN, "You can't change your own access.");
-        }
-        $u = User::query()->find($userId) ?? throw new AppException(ErrorCode::NOT_FOUND, 'User not found.');
-        $input = array_filter($input, fn ($v) => $v !== null);
-        if (($input['platformRole'] ?? null) && $u->platformRole->value === 'SUPER_ADMIN' && $input['platformRole'] !== 'SUPER_ADMIN') {
-            if (User::query()->where('platformRole', 'SUPER_ADMIN')->where('status', 'ACTIVE')->count() <= 1) {
-                throw new AppException(ErrorCode::CONFLICT, 'At least one super admin must remain.');
-            }
-        }
-        $before = ['role' => $u->platformRole->value, 'status' => $u->status->value];
-        $u->forceFill($input)->save();
-        if (($input['status'] ?? null) === 'SUSPENDED' || isset($input['platformRole'])) {
-            $this->sessions->revokeAllForUser($userId);
-        }
-        $this->audit->log('admin.user.access_update', $admin->actor(), null, 'user', $userId, ['before' => $before, 'after' => $input], $admin->ip);
-
-        return $u;
-    }
-
     // ─── Abuse reports & leads ───
 
     public function abuseReports(?string $status, int $page): LengthAwarePaginator
     {
-        return AbuseReport::query()->when($status, fn ($q, $s) => $q->where('status', $s))->orderByDesc('createdAt')->paginate(self::PAGE_SIZE, ['*'], 'page', $page);
+        return AbuseReport::query()->when($status, fn ($q, $s) => $q->where('status', $s))->orderBy('status')->orderByDesc('createdAt')->paginate(self::PAGE_SIZE, ['*'], 'page', $page);
     }
 
     public function setAbuseStatus(AdminContext $admin, string $id, string $status, ?string $note): void
@@ -406,9 +397,10 @@ class AdminService
             ->when($f['status'] ?? null, fn ($q, $v) => $q->where('status', $v))
             ->when($f['to'] ?? null, fn ($q, $v) => $q->where('to', $v))
             ->when($f['campaignId'] ?? null, fn ($q, $v) => $q->where('campaignId', $v))
+            ->when($f['provider'] ?? null, fn ($q, $v) => $q->where('providerMessageId', $v))
             ->with(['organization' => fn ($q) => $q->withTrashed()->select(['id', 'name'])])
             ->orderByDesc('createdAt')
-            ->paginate(self::PAGE_SIZE, ['id', 'organizationId', 'campaignId', 'to', 'status', 'senderValue', 'smsType', 'source', 'segments', 'cost', 'provider', 'errorCode', 'errorMessage', 'createdAt'], 'page', $page);
+            ->paginate(self::PAGE_SIZE, ['id', 'organizationId', 'campaignId', 'to', 'status', 'senderValue', 'smsType', 'source', 'segments', 'cost', 'provider', 'providerMessageId', 'errorCode', 'errorMessage', 'createdAt'], 'page', $page);
     }
 
     public function auditLogs(array $f, int $page): LengthAwarePaginator
@@ -416,7 +408,7 @@ class AdminService
         return AuditLog::query()
             ->when($f['organizationId'] ?? null, fn ($q, $v) => $q->where('organizationId', $v))
             ->when($f['action'] ?? null, fn ($q, $v) => $q->where('action', 'like', addcslashes($v, '%_\\').'%'))
-            ->with('actor:id,name,email')
+            ->with(['actor:id,name,email', 'organization' => fn ($q) => $q->withTrashed()->select(['id', 'name'])])
             ->orderByDesc('createdAt')->paginate(50, ['*'], 'page', $page);
     }
 

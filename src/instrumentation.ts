@@ -10,6 +10,9 @@ import type { Instrumentation } from "next";
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
   if (process.env.WORKER_IN_PROCESS !== "true") return;
+  // LARAVEL_FEATURES `worker`: background sending runs in Laravel's scheduler only.
+  const { laravelEnabled } = await import("@/lib/laravel/flags");
+  if (laravelEnabled("worker")) return;
   const g = globalThis as unknown as { __smsflowWorker?: boolean };
   if (g.__smsflowWorker) return; // survive dev hot reloads
   g.__smsflowWorker = true;

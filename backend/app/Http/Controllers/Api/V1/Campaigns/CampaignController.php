@@ -7,9 +7,12 @@ use App\Http\Requests\Messaging\CampaignRequest;
 use App\Http\Resources\CampaignResource;
 use App\Http\Resources\MessageResource;
 use App\Jobs\LaunchCampaignJob;
+use App\Models\Wallet;
 use App\Services\Campaign\CampaignService;
 use App\Services\Platform\SettingsService;
 use App\Services\Sms\MessageSegmentCalculator;
+use App\Services\Sms\SmsCostCalculator;
+use App\Support\Money;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -172,6 +175,32 @@ class CampaignController extends ApiController
         $name = $this->campaigns->owned($ctx, $id)->name;
 
         return $this->csv("campaign-{$name}", fn (callable $write) => $this->campaigns->exportReport($ctx, $id, $write));
+    }
+
+    /**
+     * GET /app/sms/composer: what the SMS composer needs to render before the first estimate —
+     * live segmentation rules, promotional quiet hours and opt-out hint, the organization's plan
+     * rates and its balance (port of the data loading of app/dashboard/send/page.tsx).
+     */
+    public function composer(Request $request, SettingsService $settings, SmsCostCalculator $pricing): JsonResponse
+    {
+        $ctx = $this->tenant($request);
+        $policy = $settings->smsPolicy();
+        $plan = $pricing->planFor($ctx->organizationId);
+        $balance = (string) (Wallet::query()->where('organizationId', $ctx->organizationId)->value('balance') ?? '0');
+
+        return $this->ok([
+            'segmentation' => $policy['segmentation'],
+            'promotionalQuietHours' => $policy['promotionalQuietHours'],
+            'promotionalOptOutText' => $policy['promotionalOptOutText'],
+            'rates' => [
+                'transactionalMasking' => Money::round((string) $plan->transactionalMasking, 4),
+                'transactionalNonMasking' => Money::round((string) $plan->transactionalNonMasking, 4),
+                'promotionalMasking' => Money::round((string) $plan->promotionalMasking, 4),
+                'promotionalNonMasking' => Money::round((string) $plan->promotionalNonMasking, 4),
+            ],
+            'balance' => Money::round($balance, 4),
+        ]);
     }
 
     /** POST /app/sms/segments {message}: segmentation with the live (admin-configured) rules. */

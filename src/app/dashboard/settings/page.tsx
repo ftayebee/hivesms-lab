@@ -6,10 +6,9 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/states";
 import { requireTenant } from "@/lib/auth/session";
 import { can } from "@/lib/auth/context";
-import { db } from "@/lib/db";
 import { formatNumber, formatRelative } from "@/lib/format";
 import { phoneVerificationEnabled } from "@/features/auth/service";
-import { getNotificationPrefs, listSessions } from "@/features/settings/service";
+import { getNotificationPrefs, getOrganizationSettings, getProfile, listSessions } from "@/features/settings/service";
 import { LeaveOrganizationButton, NotificationPrefsForm, OrganizationForm, PasswordForm, ProfileForm, SessionsList } from "@/features/settings/components/settings-forms";
 
 export const metadata = { title: "Settings" };
@@ -18,8 +17,8 @@ export default async function SettingsPage({ searchParams }: PageProps<"/dashboa
   const sp = await searchParams;
   const { ctx, session } = await requireTenant();
   const [user, org, sessions, prefs] = await Promise.all([
-    db.user.findUniqueOrThrow({ where: { id: session.user.id }, select: { name: true, email: true, phone: true, locale: true, phoneVerifiedAt: true } }),
-    db.organization.findUniqueOrThrow({ where: { id: ctx.organizationId }, select: { name: true, industry: true, website: true, address: true, billingEmail: true, taxId: true, dailySendLimit: true, monthlySendLimit: true, requireCampaignReview: true } }),
+    getProfile(session.user.id),
+    getOrganizationSettings(ctx),
     listSessions(session.user.id),
     getNotificationPrefs(session.user.id),
   ]);

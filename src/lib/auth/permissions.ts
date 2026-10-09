@@ -129,6 +129,14 @@ export const PLATFORM_PERMISSIONS = {
   "admin:settings:manage": ["SUPER_ADMIN"],
   "admin:audit:read": ["ADMIN", "SUPER_ADMIN"],
   "admin:abuse:manage": ["SUPPORT", "ADMIN", "SUPER_ADMIN"],
+  // Super Admin panel (docs/17): money-moving and owner-level permissions are SUPER_ADMIN only;
+  // SUPPORT never receives a financial permission. Identical to backend/app/Auth/Permissions.php.
+  "admin:finance:read": ["ADMIN", "SUPER_ADMIN"],
+  "admin:reports:export": ["ADMIN", "SUPER_ADMIN"],
+  "admin:health:read": ["ADMIN", "SUPER_ADMIN"],
+  "admin:wallet:adjust": ["SUPER_ADMIN"],
+  "admin:payments:refund": ["SUPER_ADMIN"],
+  "admin:costs:manage": ["SUPER_ADMIN"],
 } as const satisfies Record<string, PlatformRoleKey[]>;
 
 export type PlatformPermission = keyof typeof PLATFORM_PERMISSIONS;

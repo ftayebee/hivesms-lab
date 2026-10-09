@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources;
 
+use App\Support\Dhaka;
+
 class CampaignResource extends BaseResource
 {
     public function toArray($request): array
@@ -43,7 +45,12 @@ class CampaignResource extends BaseResource
             'createdAt' => $this->date('createdAt'),
             'updatedAt' => $this->date('updatedAt'),
             'template' => $this->whenLoaded('template', fn () => $this->template ? ['id' => $this->template->id, 'name' => $this->template->name] : null),
-            'organization' => $this->whenLoaded('organization', fn () => $this->organization ? ['id' => $this->organization->id, 'name' => $this->organization->name] : null),
+            // createdAt only where the query selected it (admin review queue: account age).
+            'organization' => $this->whenLoaded('organization', fn () => $this->organization ? array_filter([
+                'id' => $this->organization->id,
+                'name' => $this->organization->name,
+                'createdAt' => array_key_exists('createdAt', $this->organization->getAttributes()) ? Dhaka::iso($this->organization->createdAt) : null,
+            ], fn ($v) => $v !== null) : null),
         ];
     }
 }

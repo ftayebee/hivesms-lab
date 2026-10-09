@@ -1,6 +1,7 @@
 import { ZodError } from "zod";
 import { isAppError } from "@/lib/errors";
 import { isDatabaseUnavailable } from "@/lib/db-errors";
+import { isLaravelApiError } from "@/lib/laravel/errors";
 import { logger } from "@/lib/logger";
 
 /**
@@ -38,6 +39,18 @@ function actionErrorInner(err: unknown): ActionResult<never> {
       (fieldErrors[key] ??= []).push(issue.message);
     }
     return { ok: false, error: "Please fix the highlighted fields.", fieldErrors };
+  }
+  // Laravel API (features switched by LARAVEL_FEATURES): its 4xx messages are written for end users
+  // and its validation contract details.fields[{path,message}] maps 1:1 onto fieldErrors.
+  if (isLaravelApiError(err)) {
+    if (err.status >= 500) logger.error({ status: err.status, code: err.code, requestId: err.requestId }, "server action failed (laravel)");
+    const fieldErrors = err.fieldErrors;
+    return {
+      ok: false,
+      error: err.kind === "validation" && err.details?.fields ? "Please fix the highlighted fields." : err.userMessage,
+      ...(err.code ? { code: err.code } : {}),
+      ...(fieldErrors ? { fieldErrors } : {}),
+    };
   }
   if (isAppError(err)) {
     const field = typeof err.details?.field === "string" ? err.details.field : undefined;

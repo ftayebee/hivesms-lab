@@ -2,6 +2,8 @@
 
 namespace App\Http\Resources;
 
+use App\Http\RequestContext;
+
 class TransactionResource extends BaseResource
 {
     public function toArray($request): array
@@ -16,6 +18,9 @@ class TransactionResource extends BaseResource
             'referenceType' => $this->f('referenceType'),
             'referenceId' => $this->f('referenceId'),
             'createdAt' => $this->date('createdAt'),
+            // Platform ledger (admin) only.
+            'organization' => $this->whenLoaded('organization', fn () => $this->organization ? ['id' => $this->organization->id, 'name' => $this->organization->name] : null),
+            'createdById' => $this->when((bool) $request->attributes->get(RequestContext::ADMIN), fn () => $this->createdById),
         ];
     }
 }

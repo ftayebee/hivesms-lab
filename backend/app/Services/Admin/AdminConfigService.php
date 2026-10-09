@@ -6,10 +6,12 @@ use App\Auth\AdminContext;
 use App\Exceptions\AppException;
 use App\Models\BlocklistEntry;
 use App\Models\CreditPackage;
+use App\Models\Organization;
 use App\Models\PricingPlan;
 use App\Services\Platform\AuditLogger;
 use App\Services\Platform\SettingsService;
 use App\Support\ErrorCode;
+use App\Support\Money;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -21,7 +23,19 @@ class AdminConfigService
 {
     public function __construct(private readonly SettingsService $settings, private readonly AuditLogger $audit) {}
 
-    public function savePlan(AdminContext $admin, array $input, ?string $id = null): PricingPlan
+    /** Price-bearing plan fields: changes to these are listed separately in the audit log. */
+    public const PLAN_PRICE_FIELDS = ['minRechargeAmount', 'transactionalNonMasking', 'transactionalMasking', 'promotionalNonMasking', 'promotionalMasking', 'senderIdFee'];
+
+    /**
+     * Creates or updates a plan. Price semantics (docs/18 § Pricing): per-SMS rates apply to messages
+     * sent after the change by every organization on the plan; sent messages keep their unitPrice/cost
+     * snapshot and wallet balances are BDT, so nothing is re-charged retroactively. Updates need a
+     * reason; the audit entry records only the changed fields (before → after), the reason and how many
+     * organizations the change affects.
+     *
+     * @return array{plan: PricingPlan, affectedOrganizations: int, changed: array<string, array{before: mixed, after: mixed}>}
+     */
+    public function savePlan(AdminContext $admin, array $input, ?string $id = null, ?string $reason = null): array
     {
         if (PricingPlan::query()->where('key', $input['key'])->when($id, fn ($q) => $q->where('id', '!=', $id))->exists()) {
             throw new AppException(ErrorCode::CONFLICT, 'Another plan uses this key.', ['field' => 'key']);
@@ -30,7 +44,10 @@ class AdminConfigService
         if ($id && ! $before) {
             throw new AppException(ErrorCode::NOT_FOUND, 'Plan not found.');
         }
-        $snapshot = $before?->toArray();
+        if ($id && ! $reason) {
+            throw new AppException(ErrorCode::VALIDATION_ERROR, 'Say why the plan changes.', ['field' => 'reason']);
+        }
+        $snapshot = $before?->toArray() ?? [];
         $plan = DB::transaction(function () use ($input, $id, $before) {
             if ($input['isDefault']) {
                 PricingPlan::query()->where('isDefault', true)->when($id, fn ($q) => $q->where('id', '!=', $id))->update(['isDefault' => false]);
@@ -43,9 +60,26 @@ class AdminConfigService
 
             return PricingPlan::query()->forceCreate($input);
         });
-        $this->audit->log($id ? 'pricing.plan.update' : 'pricing.plan.create', $admin->actor(), null, 'pricing_plan', $plan->id, ['before' => $snapshot, 'after' => $plan->toArray()], $admin->ip);
+        $after = $plan->refresh()->toArray();
+        $changed = [];
+        foreach ($input as $k => $_) {
+            $b = $snapshot[$k] ?? null;
+            $a = $after[$k] ?? null;
+            $same = in_array($k, self::PLAN_PRICE_FIELDS, true) && $b !== null && $a !== null ? Money::cmp((string) $b, (string) $a) === 0 : $b == $a;
+            if (! $same) {
+                $changed[$k] = ['before' => $b, 'after' => $a];
+            }
+        }
+        $affected = Organization::query()->where('pricingPlanId', $plan->id)->count()
+            + ($plan->isDefault ? Organization::query()->whereNull('pricingPlanId')->count() : 0);
+        $this->audit->log($id ? 'pricing.plan.update' : 'pricing.plan.create', $admin->actor(), null, 'pricing_plan', $plan->id, [
+            'changed' => $changed,
+            'priceChanged' => (bool) array_intersect(array_keys($changed), self::PLAN_PRICE_FIELDS),
+            'affectedOrganizations' => $affected,
+            'reason' => $reason,
+        ], $admin->ip, $admin->userAgent);
 
-        return $plan;
+        return ['plan' => $plan, 'affectedOrganizations' => $affected, 'changed' => $changed];
     }
 
     public function savePackage(AdminContext $admin, array $input, ?string $id = null): CreditPackage

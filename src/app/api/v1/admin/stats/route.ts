@@ -1,8 +1,9 @@
 import { apiHandler } from "@/lib/api/handler";
+import { proxyRoute } from "@/lib/laravel/route";
 import { getAdminOverview } from "@/features/admin/overview";
 
 /** GET /api/v1/admin/stats: platform metrics for staff (session + platform role). */
-export const GET = apiHandler({ auth: "admin", platformPermission: "admin:access" }, async () => {
+const prismaGET = apiHandler({ auth: "admin", platformPermission: "admin:access" }, async () => {
   const o = await getAdminOverview();
   return {
     data: {
@@ -22,3 +23,6 @@ export const GET = apiHandler({ auth: "admin", platformPermission: "admin:access
     },
   };
 });
+
+/** LARAVEL_FEATURES `admin`: answered by the Laravel admin API (platform permission enforced there). */
+export const GET = proxyRoute("admin", () => "admin/stats", prismaGET, { session: true });

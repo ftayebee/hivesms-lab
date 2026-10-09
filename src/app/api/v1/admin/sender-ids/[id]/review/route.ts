@@ -1,10 +1,11 @@
 import { z } from "zod";
 import { apiHandler } from "@/lib/api/handler";
+import { proxyRoute } from "@/lib/laravel/route";
 import { requireAdminContext } from "@/features/admin/guard";
 import { reviewSenderId } from "@/features/admin/service";
 
 /** POST /api/v1/admin/sender-ids/{id}/review: approve, reject or suspend a sender ID. */
-export const POST = apiHandler(
+const prismaPOST = apiHandler(
   {
     auth: "admin",
     platformPermission: "admin:sender_ids:review",
@@ -16,3 +17,6 @@ export const POST = apiHandler(
     return { data: { id: params.id, status: body.decision } };
   },
 );
+
+/** LARAVEL_FEATURES `admin`: answered by the Laravel admin API (platform permission enforced there). */
+export const POST = proxyRoute("admin", (p) => `admin/sender-ids/${encodeURIComponent(p.id)}/review`, prismaPOST, { session: true });

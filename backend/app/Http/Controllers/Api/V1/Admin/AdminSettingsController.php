@@ -11,6 +11,7 @@ use App\Models\BlocklistEntry;
 use App\Models\CreditPackage;
 use App\Models\PricingPlan;
 use App\Services\Admin\AdminConfigService;
+use App\Services\Platform\SettingsService;
 use App\Services\Sms\SmsProviderManager;
 use App\Support\Dhaka;
 use App\Support\Money;
@@ -29,12 +30,17 @@ class AdminSettingsController extends ApiController
 
     public function storePlan(PlanRequest $request): JsonResponse
     {
-        return $this->resource($request, PricingPlanResource::class, $this->config->savePlan($this->admin($request), $request->payload()), 201);
+        $r = $this->config->savePlan($this->admin($request), $request->payload(), null, $request->reason());
+
+        return $this->resource($request, PricingPlanResource::class, $r['plan'], 201, ['affectedOrganizations' => $r['affectedOrganizations']]);
     }
 
+    /** PUT /admin/pricing/plans/{id} {…, reason}: meta.affectedOrganizations = organizations whose next messages use the new rates. */
     public function updatePlan(PlanRequest $request, string $id): JsonResponse
     {
-        return $this->resource($request, PricingPlanResource::class, $this->config->savePlan($this->admin($request), $request->payload(), $id));
+        $r = $this->config->savePlan($this->admin($request), $request->payload(), $id, $request->reason());
+
+        return $this->resource($request, PricingPlanResource::class, $r['plan'], 200, ['affectedOrganizations' => $r['affectedOrganizations'], 'changedFields' => array_keys($r['changed'])]);
     }
 
     public function packages(): JsonResponse
@@ -57,6 +63,12 @@ class AdminSettingsController extends ApiController
         $p = $this->config->savePackage($this->admin($request), $request->payload(), $id);
 
         return $this->ok(['id' => $p->id]);
+    }
+
+    /** GET /admin/settings/billing-policy: the billing policy for pricing managers (no other settings). */
+    public function billingPolicy(SettingsService $settings): JsonResponse
+    {
+        return $this->ok($settings->billingPolicy());
     }
 
     /** GET /admin/settings: every section; secrets only as set/not set. */

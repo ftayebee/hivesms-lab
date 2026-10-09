@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Alert } from "@/components/ui/misc";
 import { getSession } from "@/lib/auth/session";
-import { findInvitation } from "@/features/team/service";
+import { findInvitationForPage } from "@/features/team/service";
 import { AcceptInvite, InviteSignupForm } from "@/features/team/components/invite-accept";
 import { pageMetadata } from "@/lib/seo";
 
@@ -9,7 +9,7 @@ export const metadata = pageMetadata({ title: "Join your team", description: "Ac
 
 export default async function InvitePage({ params }: PageProps<"/invite/[token]">) {
   const { token } = await params;
-  const [inv, session] = await Promise.all([findInvitation(token), getSession()]);
+  const [inv, session] = await Promise.all([findInvitationForPage(token), getSession()]);
   if (!inv) {
     return (
       <>

@@ -19,6 +19,7 @@ class AuditLogResource extends BaseResource
             'metadata' => $this->f('metadata'),
             'createdAt' => $this->date('createdAt'),
             'actor' => $this->whenLoaded('actor', fn () => $this->actor ? ['id' => $this->actor->id, 'name' => $this->actor->name] : null),
+            'organization' => $this->whenLoaded('organization', fn () => $this->organization ? ['id' => $this->organization->id, 'name' => $this->organization->name] : null),
         ];
     }
 }

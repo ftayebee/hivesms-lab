@@ -1,5 +1,7 @@
 <?php
 
+use App\Exceptions\AppException;
+use App\Services\Admin\StaffService;
 use App\Services\Messaging\WorkerService;
 use App\Services\Platform\SchemaInspector;
 use Illuminate\Support\Facades\Artisan;
@@ -147,3 +149,46 @@ if (config('smsflow.queue_worker_via_scheduler')) {
 
 Schedule::command('app:housekeeping')->everyTenMinutes()->withoutOverlapping()->onOneServer();
 Schedule::command('queue:prune-failed --hours=720')->daily();
+
+/*
+|--------------------------------------------------------------------------
+| Platform owner bootstrap (one-time, explicit)
+|--------------------------------------------------------------------------
+| Creates or promotes the FIRST super admin. Refuses while any active super admin exists (later
+| owners are added in Admin → Users by an existing owner). The operator must confirm by typing the
+| e-mail again (or pass --confirm-email=<same address> when running non-interactively). No password
+| is chosen or printed: a single-use set-password link (60 min) is printed once to this terminal —
+| it is not logged and not e-mailed. See docs/18-super-admin-operations.md.
+*/
+Artisan::command('platform:bootstrap-owner {email : the owner\'s e-mail address} {--name=Platform owner : display name for a new account} {--confirm-email= : repeat the e-mail to confirm (non-interactive runs)}', function (StaffService $staff) {
+    $email = strtolower(trim((string) $this->argument('email')));
+    if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $this->error('Enter a valid e-mail address.');
+
+        return 1;
+    }
+    if ($staff->activeOwnerCount() > 0) {
+        $this->error('An active super admin already exists. Add owners from the admin panel (Users) instead.');
+
+        return 1;
+    }
+    $this->warn("This grants FULL platform-owner access to {$email} on the '".app()->environment()."' environment (database ".DB::connection()->getDatabaseName().').');
+    $typed = $this->option('confirm-email') ?? ($this->input->isInteractive() ? $this->ask('Type the e-mail address again to confirm') : null);
+    if (strtolower(trim((string) $typed)) !== $email) {
+        $this->error('Confirmation did not match. Nothing was changed.');
+
+        return 1;
+    }
+    try {
+        $r = $staff->bootstrapOwner($email, mb_substr(trim((string) $this->option('name')), 0, 100) ?: 'Platform owner');
+    } catch (AppException $e) {
+        $this->error($e->getMessage());
+
+        return 1;
+    }
+    $this->info($r['created'] ? "Super admin account created for {$email}." : "Existing account {$email} promoted to super admin (password unchanged; sessions signed out).");
+    $this->line('Single-use link to set the password (valid 60 minutes, shown once):');
+    $this->line($r['resetLink']);
+
+    return 0;
+})->purpose('One-time creation/promotion of the first platform owner (super admin), with explicit confirmation');

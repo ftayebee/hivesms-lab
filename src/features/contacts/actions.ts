@@ -6,6 +6,8 @@ import { formToObject, type ActionResult } from "@/lib/action-result";
 import { tenantAction } from "@/lib/tenant-action";
 import { AppError } from "@/lib/errors";
 import { CSV_MAX_BYTES } from "@/lib/csv";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 import { contactSchema, groupSchema, suppressionSchema } from "./schemas";
 import {
   addSuppression,
@@ -75,8 +77,6 @@ export async function importContactsAction(_prev: unknown, formData: FormData): 
     if (!name.endsWith(".csv") && !name.endsWith(".txt")) {
       throw new AppError("VALIDATION_ERROR", "Upload a .csv file. To import from Excel, use File → Save As → CSV UTF-8.", { field: "file" });
     }
-    const text = await file.text();
-    if (text.includes("\u0000")) throw new AppError("VALIDATION_ERROR", "This does not look like a text CSV file.", { field: "file" });
     const opts = z
       .object({
         groupId: z.uuid().optional().or(z.literal("").transform(() => undefined)),
@@ -84,6 +84,15 @@ export async function importContactsAction(_prev: unknown, formData: FormData): 
         consentSource: z.string().trim().max(120).optional(),
       })
       .parse(formToObject(formData));
+    if (laravelEnabled("contacts")) {
+      // Laravel validates, parses and imports the original file (large files on its queue).
+      const { result, pending } = await viaLaravel.importContacts(file, { groupId: opts.groupId ?? null, defaultConsent: opts.defaultConsent, consentSource: opts.consentSource || null });
+      revalidatePath("/dashboard/contacts", "layout");
+      if (pending || !result) return { ok: true, message: "Your file is being imported. Contacts appear in the list within a few minutes." };
+      return { ok: true, message: `Imported ${result.created + result.updated} contacts.`, data: result };
+    }
+    const text = await file.text();
+    if (text.includes("\u0000")) throw new AppError("VALIDATION_ERROR", "This does not look like a text CSV file.", { field: "file" });
     const result = await importContacts(ctx, text, { groupId: opts.groupId ?? null, defaultConsent: opts.defaultConsent, consentSource: opts.consentSource || null });
     revalidatePath("/dashboard/contacts", "layout");
     return { ok: true, message: `Imported ${result.created + result.updated} contacts.`, data: result };

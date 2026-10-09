@@ -14,15 +14,8 @@ import { can } from "@/lib/auth/context";
 import { getT } from "@/i18n/server";
 import { formatBDT, formatDate, formatDateTime, formatNumber, formatPercent } from "@/lib/format";
 import { parseRange } from "@/features/reports/range";
-import {
-  getBalanceSummary,
-  getCampaignPerformance,
-  getDailySeries,
-  getRecentCampaigns,
-  getRecentTransactions,
-  getSpend,
-  getStatusTotals,
-} from "@/features/reports/queries";
+import { loadDashboard } from "@/features/reports/dashboard";
+import { laravelPage } from "@/lib/laravel-api";
 
 export const metadata = { title: "Dashboard" };
 
@@ -34,15 +27,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   const range = parseRange(sp);
   const canBilling = can(ctx, "billing:read");
 
-  const [totals, daily, spend, balance, recent, perf, txns] = await Promise.all([
-    getStatusTotals(ctx, range),
-    getDailySeries(ctx, range),
-    canBilling ? getSpend(ctx, range) : null,
-    canBilling ? getBalanceSummary(ctx) : null,
-    getRecentCampaigns(ctx, 5),
-    getCampaignPerformance(ctx, range, 6),
-    canBilling ? getRecentTransactions(ctx, 5) : [],
-  ]);
+  const { totals, daily, spend, balance, recent, perf, txns } = await laravelPage(() => loadDashboard(ctx, range, canBilling));
   const firstName = session.user.name.split(" ")[0];
   const noData = totals.total === 0;
 

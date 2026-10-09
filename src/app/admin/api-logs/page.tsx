@@ -6,8 +6,8 @@ import { Pagination, parsePage } from "@/components/ui/table";
 import { EmptyState, PageHeader } from "@/components/shared/states";
 import { StatusTabs } from "@/components/admin/status-tabs";
 import { requirePlatform } from "@/lib/auth/session";
-import type { Prisma } from "@/generated/prisma/client";
-import { db } from "@/lib/db";
+import { apiLogsPage } from "@/features/admin/page-data";
+import { laravelPage } from "@/lib/laravel-api";
 import { formatDateTime } from "@/lib/format";
 
 export const metadata = { title: "API logs" };
@@ -17,11 +17,7 @@ export default async function AdminApiLogsPage({ searchParams }: PageProps<"/adm
   const sp = await searchParams;
   const status = sp.status === "4xx" || sp.status === "5xx" ? sp.status : undefined;
   const page = parsePage(sp.page);
-  const where: Prisma.ApiLogWhereInput = status === "4xx" ? { statusCode: { gte: 400, lt: 500 } } : status === "5xx" ? { statusCode: { gte: 500 } } : {};
-  const [rows, total] = await Promise.all([
-    db.apiLog.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * 40, take: 40, include: { organization: { select: { id: true, name: true } }, apiKey: { select: { prefix: true } } } }),
-    db.apiLog.count({ where }),
-  ]);
+  const { rows, total, pageSize } = await laravelPage(() => apiLogsPage({ status, page }));
   return (
     <>
       <PageHeader title="API logs" description="All customer API requests. Bodies are never stored." />
@@ -65,7 +61,7 @@ export default async function AdminApiLogsPage({ searchParams }: PageProps<"/adm
                 </tbody>
               </table>
             </div>
-            <Pagination page={page} pageSize={40} total={total} searchParams={sp} basePath="/admin/api-logs" />
+            <Pagination page={page} pageSize={pageSize} total={total} searchParams={sp} basePath="/admin/api-logs" />
           </>
         )}
       </Card>

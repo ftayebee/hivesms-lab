@@ -1,4 +1,5 @@
 import { apiHandler } from "@/lib/api/handler";
+import { proxyRoute } from "@/lib/laravel/route";
 import { calculateSegments } from "@/lib/sms-segments";
 import { messageCost, rateFor } from "@/lib/pricing";
 import { getSmsPolicy } from "@/services/settings";
@@ -7,7 +8,7 @@ import { resolveSender } from "@/services/messaging/send";
 import { estimateBody } from "@/features/public-api/schemas";
 
 /** POST /api/v1/sms/estimate: segments and cost for a message. Nothing is sent or charged. */
-export const POST = apiHandler({ auth: "apiKey", scopes: ["sms:send"], body: estimateBody }, async ({ body, ctx }) => {
+const prismaPOST = apiHandler({ auth: "apiKey", scopes: ["sms:send"], body: estimateBody }, async ({ body, ctx }) => {
   const [policy, plan, sender] = await Promise.all([getSmsPolicy(), getOrganizationPlan(ctx!.organizationId), resolveSender(ctx!.organizationId, body.sender_id)]);
   const seg = calculateSegments(body.message, policy.segmentation);
   const rate = rateFor(plan, body.type, sender.type);
@@ -28,3 +29,6 @@ export const POST = apiHandler({ auth: "apiKey", scopes: ["sms:send"], body: est
     },
   };
 });
+
+/** LARAVEL_FEATURES `publicApi`: the same request (API key, body, Idempotency-Key) is answered by Laravel. */
+export const POST = proxyRoute("publicApi", () => "sms/estimate", prismaPOST);

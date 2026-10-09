@@ -171,7 +171,8 @@ class DashboardModulesTest extends TestCase
     public function test_public_pricing_and_contact_form(): void
     {
         $this->seedPlan();
-        $this->getJson('/api/v1/public/pricing')->assertOk()->assertJsonPath('data.plans.0.key', 'starter');
+        $this->getJson('/api/v1/public/pricing')->assertOk()->assertJsonPath('data.plans.0.key', 'starter')
+            ->assertJsonPath('data.minimumTopUp', 500)->assertJsonPath('data.balanceValidityMonths', 12);
         $this->postJson('/api/v1/public/contact', ['name' => 'A', 'email' => 'x'])->assertStatus(422);
         $this->postJson('/api/v1/public/contact', ['name' => 'Asha', 'email' => 'a@x.com', 'subject' => 'Pricing', 'message' => 'Tell me about pricing please'])->assertCreated();
         $this->postJson('/api/v1/public/contact', ['name' => 'Bot', 'email' => 'b@x.com', 'subject' => 'Spam', 'message' => 'buy buy buy buy', 'website' => 'http://spam'])->assertOk();

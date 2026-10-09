@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { AppError, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { actorOf, requirePermission, type TenantContext } from "@/lib/auth/context";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 
 export const templateSchema = z.object({
   name: z.string().trim().min(1, "Enter a template name.").max(80),
@@ -14,6 +16,7 @@ export type TemplateInput = z.infer<typeof templateSchema>;
 
 export async function listTemplates(ctx: TenantContext, q?: string) {
   requirePermission(ctx, "templates:read");
+  if (laravelEnabled("templates")) return viaLaravel.listTemplates(q);
   return db.template.findMany({
     where: { organizationId: ctx.organizationId, deletedAt: null, ...(q ? { OR: [{ name: { contains: q } }, { body: { contains: q } }] } : {}) },
     orderBy: { updatedAt: "desc" },
@@ -23,6 +26,7 @@ export async function listTemplates(ctx: TenantContext, q?: string) {
 
 export async function saveTemplate(ctx: TenantContext, input: TemplateInput, id?: string) {
   requirePermission(ctx, "templates:write");
+  if (laravelEnabled("templates")) return viaLaravel.saveTemplate(input, id);
   if (id) {
     const t = await db.template.findFirst({ where: { id, organizationId: ctx.organizationId, deletedAt: null } });
     if (!t) throw notFound("Template");
@@ -39,6 +43,7 @@ export async function saveTemplate(ctx: TenantContext, input: TemplateInput, id?
 
 export async function deleteTemplate(ctx: TenantContext, id: string) {
   requirePermission(ctx, "templates:write");
+  if (laravelEnabled("templates")) return viaLaravel.deleteTemplate(id);
   const t = await db.template.findFirst({ where: { id, organizationId: ctx.organizationId, deletedAt: null } });
   if (!t) throw notFound("Template");
   await db.template.update({ where: { id }, data: { deletedAt: new Date() } });

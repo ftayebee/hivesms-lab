@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { apiHandler } from "@/lib/api/handler";
+import { proxyRoute } from "@/lib/laravel/route";
 import { listOrganizations } from "@/features/admin/service";
 
 const query = z.object({
@@ -9,7 +10,7 @@ const query = z.object({
 });
 
 /** GET /api/v1/admin/customers: paginated organizations. */
-export const GET = apiHandler({ auth: "admin", platformPermission: "admin:customers:read", query }, async ({ query: q }) => {
+const prismaGET = apiHandler({ auth: "admin", platformPermission: "admin:customers:read", query }, async ({ query: q }) => {
   const { rows, total } = await listOrganizations({ q: q.q, status: q.status, page: q.page });
   return {
     data: rows.map((o) => ({
@@ -26,3 +27,6 @@ export const GET = apiHandler({ auth: "admin", platformPermission: "admin:custom
     meta: { total, page: q.page },
   };
 });
+
+/** LARAVEL_FEATURES `admin`: answered by the Laravel admin API (platform permission enforced there). */
+export const GET = proxyRoute("admin", () => "admin/customers", prismaGET, { session: true });
