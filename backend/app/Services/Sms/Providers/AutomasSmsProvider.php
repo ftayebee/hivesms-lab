@@ -3,6 +3,7 @@
 namespace App\Services\Sms\Providers;
 
 use App\Services\Sms\DeliveryStatus;
+use App\Services\Sms\MessageSegmentCalculator;
 use App\Services\Sms\SendSmsInput;
 use App\Services\Sms\SendSmsResult;
 use App\Services\Sms\WebhookRequest;
@@ -95,8 +96,11 @@ class AutomasSmsProvider extends BaseSmsProvider
             'msisdn' => ltrim($input->to, '+'),
             'smstext' => $input->message,
         ];
+        // Per the logged-in API page: type=long for multi-part, smsformat=8 for Unicode.
+        if (MessageSegmentCalculator::calculate($input->message)['segments'] > 1) {
+            $form['type'] = 'long';
+        }
         if ($input->encoding === 'UCS2') {
-            $form['type'] = self::UNICODE;
             $form['smsformat'] = self::UNICODE;
         }
 

@@ -1,4 +1,5 @@
 import { logger, maskPhone } from "@/lib/logger";
+import { calculateSegments } from "@/lib/sms-segments";
 import {
   basicSenderIdValidation,
   type DeliveryStatusResult,
@@ -86,10 +87,9 @@ export class AutomasSmsProvider implements SmsProvider {
       msisdn: input.to.replace(/^\+/, ""),
       smstext: input.message,
     });
-    if (input.encoding === "UCS2") {
-      form.set("type", UNICODE);
-      form.set("smsformat", UNICODE);
-    }
+    // Per the logged-in API page: type=long for multi-part, smsformat=8 for Unicode.
+    if (calculateSegments(input.message).segments > 1) form.set("type", "long");
+    if (input.encoding === "UCS2") form.set("smsformat", UNICODE);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);

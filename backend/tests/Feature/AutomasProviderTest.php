@@ -55,7 +55,24 @@ class AutomasProviderTest extends TestCase
     {
         $this->reply(['status' => 0, 'id' => 1]);
         $this->provider()->send($this->input(message: 'পরীক্ষা', encoding: 'UCS2'));
-        Http::assertSent(fn (Request $q) => $q['smstext'] === 'পরীক্ষা' && $q['type'] === '8' && $q['smsformat'] === '8');
+        Http::assertSent(fn (Request $q) => $q['smstext'] === 'পরীক্ষা' && ! isset($q['type']) && $q['smsformat'] === '8');
+    }
+
+    public function test_marks_multi_part_messages_as_long(): void
+    {
+        $this->reply(['status' => 0, 'id' => 1]);
+        $this->provider()->send($this->input(message: str_repeat('a', 161)));
+        Http::assertSent(fn (Request $q) => $q['type'] === 'long' && ! isset($q['smsformat']));
+
+        Http::swap(new Factory);
+        $this->reply(['status' => 0, 'id' => 1]);
+        $this->provider()->send($this->input(message: str_repeat('প', 71), encoding: 'UCS2'));
+        Http::assertSent(fn (Request $q) => $q['type'] === 'long' && $q['smsformat'] === '8');
+
+        Http::swap(new Factory);
+        $this->reply(['status' => 0, 'id' => 1]);
+        $this->provider()->send($this->input(message: str_repeat('a', 160)));
+        Http::assertSent(fn (Request $q) => ! isset($q['type']));
     }
 
     public function test_does_not_mistake_a_failed_send_for_success_even_though_it_carries_an_id(): void

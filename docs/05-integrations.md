@@ -93,14 +93,18 @@ Admin settings override the env value, so an existing `sms.provider` setting mus
   backoff, then fail with a refund. Fix the account quickly, because customers' messages are waiting on it.
 - **Possible duplicates.** The API has no client reference, so a message that times out after
   Automas accepted it is sent again on retry. Unreadable replies are not retried, for the same reason.
-- **No delivery reports.** Automas documents no webhooks and no status API. The adapter declares
+- **Delivery reports not wired yet.** The public docs mention none, but the logged-in panel has
+  Developer Options → DLR Push Conf (a success URL and a fail URL). Its request format is undocumented,
+  so it needs capturing from a real send before an adapter can parse it. Until then the adapter declares
   `hasDeliveryReports = false`, so messages stay `SUBMITTED` (shown as "Sent") and never become
   `DELIVERED`, delivered counts stay 0, and no `message.delivered` webhook is sent. They are not
   expired after 72 hours, since that would report every send as failed. Webhook requests get 401.
-- **No balance API.** The documented balance URL is the send endpoint, so `getBalance` returns
-  `null`. Watch the balance in the Automas panel: an empty balance shows up as status 1000.
-- **Long messages.** The documentation is ambiguous about multi-part GSM-7 messages, so check that
-  they concatenate correctly on a handset (see the checklist below).
+- **Balance not wired yet.** The logged-in API page has a balance check, but its URL contains the
+  key and has not been recorded here, so `getBalance` returns `null`. Watch the balance in the
+  Automas panel: an empty balance shows up as status 1000.
+- **Long messages.** Multi-part messages are sent with `type=long`, and Unicode with `smsformat=8`,
+  as the logged-in API page specifies. Check that they join correctly on a handset (see the checklist
+  below).
 
 Check credentials and a sender ID with one real message, which uses real SMS balance:
 

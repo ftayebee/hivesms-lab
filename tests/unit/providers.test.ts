@@ -110,8 +110,23 @@ describe("Automas provider", () => {
     const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     const form = new URLSearchParams(String(init.body));
     expect(form.get("smstext")).toBe("পরীক্ষা");
-    expect(form.get("type")).toBe("8");
+    expect(form.get("type")).toBeNull();
     expect(form.get("smsformat")).toBe("8");
+  });
+
+  it("marks multi-part messages as long", async () => {
+    const sentForm = async (message: string, encoding: SendSmsInput["encoding"]) => {
+      const fetchMock = reply({ status: 0, id: 1 });
+      vi.stubGlobal("fetch", fetchMock);
+      await p.sendSms({ ...input("+8801712345678"), message, encoding });
+      const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+      return new URLSearchParams(String(init.body));
+    };
+    expect((await sentForm("a".repeat(160), "GSM7")).get("type")).toBeNull();
+    expect((await sentForm("a".repeat(161), "GSM7")).get("type")).toBe("long");
+    const longBangla = await sentForm("প".repeat(71), "UCS2");
+    expect(longBangla.get("type")).toBe("long");
+    expect(longBangla.get("smsformat")).toBe("8");
   });
 
   it("does not mistake a failed send for success, even though it carries an id (recorded live)", async () => {
