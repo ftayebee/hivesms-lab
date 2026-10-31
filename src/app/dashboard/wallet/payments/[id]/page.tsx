@@ -12,8 +12,8 @@ import { can } from "@/lib/auth/context";
 import { isAppError } from "@/lib/errors";
 import { formatBDT, formatDateTime } from "@/lib/format";
 import { getT } from "@/i18n/server";
-import { getPaymentSettings } from "@/services/settings";
-import { getOwnPayment } from "@/features/wallet/service";
+import { getPaymentForPage } from "@/features/wallet/service";
+import { laravelPage } from "@/lib/laravel-api";
 import { CancelPaymentButton, ReferenceForm } from "@/features/wallet/components/wallet-controls";
 
 export const metadata = { title: "Payment" };
@@ -23,14 +23,13 @@ export default async function PaymentPage({ params, searchParams }: PageProps<"/
   const { ctx, allowed } = await tenantWithPermission("billing:read");
   if (!allowed) return <PermissionDenied permission="billing:read" />;
   const { t } = await getT();
-  let p;
+  let p, manualInstructions;
   try {
-    p = await getOwnPayment(ctx, id);
+    ({ payment: p, manualInstructions } = await laravelPage(() => getPaymentForPage(ctx, id)));
   } catch (err) {
     if (isAppError(err) && err.code === "NOT_FOUND") notFound();
     throw err;
   }
-  const settings = await getPaymentSettings();
   const canManage = can(ctx, "billing:manage");
   const Icon = p.status === "SUCCEEDED" ? CheckCircle2 : p.status === "FAILED" || p.status === "CANCELLED" ? XCircle : Clock;
 
@@ -69,7 +68,7 @@ export default async function PaymentPage({ params, searchParams }: PageProps<"/
                 <CardTitle>Pay by bank transfer</CardTitle>
               </CardHeader>
               <CardContent className="space-y-5">
-                <p className="whitespace-pre-wrap text-sm">{settings.manualInstructions}</p>
+                <p className="whitespace-pre-wrap text-sm">{manualInstructions}</p>
                 <dl className="grid grid-cols-2 gap-3 rounded-lg bg-surface p-4 text-sm">
                   <div>
                     <dt className="text-xs text-muted-foreground">Amount to pay</dt>

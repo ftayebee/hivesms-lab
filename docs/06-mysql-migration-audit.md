@@ -161,7 +161,7 @@ picks them up if that fails). On Hostinger Business the queue is driven by the c
 - `prisma/migrations/20260930000000_init_mysql`: generated baseline plus hand-written SQL
   (`utf8mb4_bin` on 5 case-sensitive identifier columns, both CHECK constraints, counter seed
   `invoice_number = 1000` so numbering continues at 1001 as before).
-- PostgreSQL migrations moved to `prisma/archive/postgresql-migrations` (reference only).
+- PostgreSQL migrations removed from the tree (they remain in git history before this change; they cannot run on MySQL).
 - **Verified:** `prisma migrate deploy` on an empty MariaDB 10.4 applies cleanly, and
   `prisma migrate diff --from-config-datasource --to-schema` reports an empty migration (no drift).
 

@@ -5,12 +5,41 @@ import { Input, Textarea } from "@/components/ui/input";
 import { PageHeader } from "@/components/shared/states";
 import { AdminForm } from "@/components/admin/admin-ui";
 import { requirePlatform } from "@/lib/auth/session";
-import { db } from "@/lib/db";
-import { formatBDT } from "@/lib/format";
+import { formatBDT, type MoneyLike } from "@/lib/format";
+import { pricingPage } from "@/features/admin/page-data";
+import { laravelPage } from "@/lib/laravel-api";
 import { jsonStringArray } from "@/lib/utils";
-import { getBillingPolicy } from "@/services/settings";
 import { saveBillingPolicyAction, savePackageAction, savePlanAction } from "@/features/admin/actions";
-import type { PricingPlan, CreditPackage } from "@/generated/prisma/client";
+/** What the forms render; satisfied by Prisma rows and by the Laravel admin API mapping. */
+interface PlanFormValue {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  minRechargeAmount: MoneyLike;
+  transactionalNonMasking: MoneyLike;
+  transactionalMasking: MoneyLike;
+  promotionalNonMasking: MoneyLike;
+  promotionalMasking: MoneyLike;
+  senderIdFee: MoneyLike;
+  features: unknown;
+  isCustom: boolean;
+  isPublic: boolean;
+  isDefault: boolean;
+  highlighted: boolean;
+  active: boolean;
+  sortOrder: number;
+}
+
+interface PackageFormValue {
+  id: string;
+  name: string;
+  amount: MoneyLike;
+  bonusPercent: MoneyLike;
+  description: string | null;
+  active: boolean;
+  sortOrder: number;
+}
 
 export const metadata = { title: "Pricing" };
 
@@ -23,7 +52,7 @@ function Check({ name, label, checked }: { name: string; label: string; checked:
   );
 }
 
-function PlanForm({ plan }: { plan?: PricingPlan }) {
+function PlanForm({ plan }: { plan?: PlanFormValue }) {
   const n = (v: unknown) => (v === undefined || v === null ? "" : String(v));
   return (
     <AdminForm action={savePlanAction} submitLabel={plan ? "Save plan" : "Create plan"} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -68,11 +97,16 @@ function PlanForm({ plan }: { plan?: PricingPlan }) {
         <Check name="highlighted" label="Highlight" checked={plan?.highlighted ?? false} />
         <Check name="isCustom" label="Custom (contact sales)" checked={plan?.isCustom ?? false} />
       </div>
+      {plan && (
+        <Field label="Reason for the change" required className="sm:col-span-2 lg:col-span-4" hint="Recorded with the before/after values. New rates apply to messages sent after saving by every organization on this plan; messages already sent keep the price they were charged.">
+          <Input name="reason" maxLength={500} />
+        </Field>
+      )}
     </AdminForm>
   );
 }
 
-function PackageForm({ pkg }: { pkg?: CreditPackage }) {
+function PackageForm({ pkg }: { pkg?: PackageFormValue }) {
   return (
     <AdminForm action={savePackageAction} submitLabel={pkg ? "Save" : "Add package"} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
       {pkg && <input type="hidden" name="id" value={pkg.id} />}
@@ -97,7 +131,7 @@ function PackageForm({ pkg }: { pkg?: CreditPackage }) {
 
 export default async function AdminPricingPage() {
   await requirePlatform("admin:pricing:manage");
-  const [plans, packages, policy] = await Promise.all([db.pricingPlan.findMany({ orderBy: { sortOrder: "asc" } }), db.creditPackage.findMany({ orderBy: { sortOrder: "asc" } }), getBillingPolicy()]);
+  const { plans, packages, policy } = await laravelPage(() => pricingPage());
   return (
     <>
       <PageHeader title="Pricing" description="Rates are per SMS segment in BDT, excluding VAT. Every change is recorded in the audit log with before and after values." />

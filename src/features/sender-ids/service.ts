@@ -6,6 +6,9 @@ import { audit } from "@/lib/audit";
 import { actorOf, assertOrgActive, requirePermission, type TenantContext } from "@/lib/auth/context";
 import { getSmsProvider } from "@/services/sms";
 import { getStorage, storeDocument, type StoredFile } from "@/services/storage";
+import { getOrganizationPlan } from "@/services/billing/pricing";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 
 export const senderIdRequestSchema = z.object({
   value: z
@@ -26,13 +29,23 @@ export async function listSenderIds(ctx: TenantContext) {
   return db.senderId.findMany({ where: { organizationId: ctx.organizationId }, orderBy: [{ status: "asc" }, { createdAt: "desc" }] });
 }
 
+/** Sender-ID page: the list and the plan's sender-ID fee. */
+export async function loadSenderIdsPage(ctx: TenantContext) {
+  requirePermission(ctx, "sender_ids:read");
+  if (laravelEnabled("senderIds")) return viaLaravel.listSenderIds();
+  const [senders, plan] = await Promise.all([listSenderIds(ctx), getOrganizationPlan(ctx.organizationId)]);
+  return { senders, senderIdFee: plan.senderIdFee };
+}
+
 export async function approvedSenderIds(organizationId: string) {
+  if (laravelEnabled("senderIds")) return viaLaravel.approvedSenderIds();
   return db.senderId.findMany({ where: { organizationId, status: "APPROVED" }, orderBy: [{ isDefault: "desc" }, { value: "asc" }], select: { id: true, value: true, type: true, isDefault: true } });
 }
 
 export async function requestSenderId(ctx: TenantContext, input: z.infer<typeof senderIdRequestSchema>, files: File[]) {
   requirePermission(ctx, "sender_ids:manage");
   assertOrgActive(ctx);
+  if (laravelEnabled("senderIds")) return viaLaravel.requestSenderId(input, files);
   const provider = await getSmsProvider();
   const check = await provider.validateSenderId(input.value, input.type);
   if (!check.valid) throw new AppError("VALIDATION_ERROR", check.reason ?? "This sender ID format is not accepted.", { field: "value" });
@@ -77,6 +90,7 @@ export async function requestSenderId(ctx: TenantContext, input: z.infer<typeof 
 
 export async function setDefaultSenderId(ctx: TenantContext, id: string) {
   requirePermission(ctx, "sender_ids:manage");
+  if (laravelEnabled("senderIds")) return viaLaravel.setDefaultSenderId(id);
   const s = await db.senderId.findFirst({ where: { id, organizationId: ctx.organizationId } });
   if (!s) throw notFound("Sender ID");
   if (s.status !== "APPROVED") throw new AppError("VALIDATION_ERROR", "Only approved sender IDs can be the default.");
@@ -89,6 +103,7 @@ export async function setDefaultSenderId(ctx: TenantContext, id: string) {
 
 export async function withdrawSenderIdRequest(ctx: TenantContext, id: string) {
   requirePermission(ctx, "sender_ids:manage");
+  if (laravelEnabled("senderIds")) return viaLaravel.withdrawSenderIdRequest(id);
   const s = await db.senderId.findFirst({ where: { id, organizationId: ctx.organizationId } });
   if (!s) throw notFound("Sender ID");
   if (s.status !== "PENDING") throw new AppError("VALIDATION_ERROR", "Only pending requests can be withdrawn.");

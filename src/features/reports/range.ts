@@ -50,3 +50,12 @@ export function dayKeys(range: DateRange): string[] {
   for (let t = range.from.getTime(); t < range.to.getTime(); t += DAY) out.push(dhakaDateKey(new Date(t)));
   return out;
 }
+
+/**
+ * The range as query parameters for the Laravel API (DateRange::fromQuery accepts the same presets
+ * and custom from/to as Dhaka calendar days, `to` inclusive).
+ */
+export function rangeToQuery(range: DateRange): { range: string; from?: string; to?: string } {
+  if (range.key !== "custom") return { range: range.key };
+  return { range: "custom", from: dhakaDateKey(range.from), to: dhakaDateKey(new Date(range.to.getTime() - DAY)) };
+}

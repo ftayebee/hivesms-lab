@@ -36,6 +36,9 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   reactStrictMode: true,
+  // `next build` type-checks the app only; tests and test tooling need devDependencies, which
+  // production installs omit. `npm run typecheck` still checks everything via tsconfig.json.
+  typescript: { tsconfigPath: "tsconfig.build.json" },
   serverExternalPackages: ["pino", "pino-pretty", "@node-rs/argon2", "mariadb"],
   experimental: {
     optimizePackageImports: ["lucide-react", "recharts"],

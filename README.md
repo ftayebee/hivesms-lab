@@ -27,7 +27,7 @@ A multi-tenant bulk SMS platform for businesses in Bangladesh. It covers:
 
 ## Quick start (local)
 
-Requirements: Node.js 22.9 or later and a MySQL 8+ or MariaDB 10.4+ server (XAMPP's MariaDB, a local install,
+Requirements: Node.js 24.x and a MySQL 8+ or MariaDB 10.4+ server (XAMPP's MariaDB, a local install,
 or `docker run -d -p 3306:3306 -e MARIADB_ROOT_PASSWORD=root mariadb:11.4`).
 
 ```bash
@@ -78,7 +78,7 @@ local development.
 | Script | What it does |
 |---|---|
 | `dev` / `build` / `start` | Development server, production build (standalone), run the production build |
-| `build:deploy` | `prisma generate` + `prisma migrate deploy` + `next build` (deployment build command) |
+| `build:deploy` | `prisma generate` + `prisma migrate deploy` + `next build --webpack` (deployment build command) |
 | `worker` | Background worker: campaigns, send queue, retries, delivery polling, webhooks, housekeeping |
 | `db:migrate` / `db:deploy` | Create a migration (dev) / apply migrations (prod) |
 | `db:bootstrap` | Idempotent production setup: permissions, example pricing, optional first super admin |
@@ -98,7 +98,7 @@ src/features/       domain modules (service + actions + components per feature)
 src/services/       messaging pipeline, billing, and provider abstractions (sms, payments, email, storage)
 src/lib/            auth, API handler, crypto, rate limiting, phone/segment/money utilities
 src/components/     UI kit and shared, marketing, dashboard and admin components
-prisma/             schema, migrations (MySQL), archived PostgreSQL migrations, demo seed
+prisma/             schema, migrations (MySQL), demo seed
 scripts/            worker, bootstrap, standalone start, local-DB guard
 tests/              unit, integration, e2e, support
 docs/               product analysis, architecture, design system, deployment, integrations,

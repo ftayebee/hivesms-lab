@@ -7,8 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Pagination, parsePage } from "@/components/ui/table";
 import { EmptyState, PageHeader } from "@/components/shared/states";
 import { requirePlatform } from "@/lib/auth/session";
-import type { Prisma } from "@/generated/prisma/client";
-import { db } from "@/lib/db";
+import { auditLogsPage } from "@/features/admin/page-data";
+import { laravelPage } from "@/lib/laravel-api";
 import { formatDateTime } from "@/lib/format";
 
 export const metadata = { title: "Audit logs" };
@@ -19,11 +19,7 @@ export default async function AdminAuditPage({ searchParams }: PageProps<"/admin
   const action = typeof sp.action === "string" ? sp.action.trim().slice(0, 60) : "";
   const org = typeof sp.org === "string" && /^[0-9a-f-]{36}$/.test(sp.org) ? sp.org : undefined;
   const page = parsePage(sp.page);
-  const where: Prisma.AuditLogWhereInput = { ...(action ? { action: { startsWith: action } } : {}), ...(org ? { organizationId: org } : {}) };
-  const [rows, total] = await Promise.all([
-    db.auditLog.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * 50, take: 50, include: { actor: { select: { name: true, email: true } }, organization: { select: { id: true, name: true } } } }),
-    db.auditLog.count({ where }),
-  ]);
+  const { rows, total, pageSize } = await laravelPage(() => auditLogsPage({ action, org, page }));
   return (
     <>
       <PageHeader title="Audit logs" description="Append-only record of security-relevant and administrative actions. Secrets are never logged." />
@@ -73,7 +69,7 @@ export default async function AdminAuditPage({ searchParams }: PageProps<"/admin
                 </li>
               ))}
             </ul>
-            <Pagination page={page} pageSize={50} total={total} searchParams={sp} basePath="/admin/audit-logs" />
+            <Pagination page={page} pageSize={pageSize} total={total} searchParams={sp} basePath="/admin/audit-logs" />
           </>
         )}
       </Card>

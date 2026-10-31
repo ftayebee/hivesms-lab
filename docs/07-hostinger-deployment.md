@@ -98,7 +98,7 @@ and replaces it on each deploy, so files written inside the app folder can be lo
 
 ## 6. Install Node dependencies
 
-In the Node.js app setup choose **Node.js 22** (or 24; `package.json` requires ≥ 22.9) and **npm**.
+In the Node.js app setup choose **Node.js 24** (`package.json` requires 24.x) and **npm**.
 Hostinger runs the install step itself. `npm install` triggers `postinstall` → `prisma generate`.
 
 The build needs the dev dependencies (TypeScript, Tailwind, Prisma CLI). If a build log shows
@@ -120,7 +120,7 @@ edit an applied migration. Pick one option:
 npm run build:deploy
 ```
 
-which runs `prisma generate && prisma migrate deploy && next build`. It needs `DATABASE_URL` at
+which runs `prisma generate && prisma migrate deploy && next build --webpack`. It needs `DATABASE_URL` at
 build time (documented) and the database reachable from Hostinger's build environment. On the
 first deploy check the build log for `All migrations have been successfully applied.` If the
 build log shows `P1001: Can't reach database server`, use option B and set the build command to

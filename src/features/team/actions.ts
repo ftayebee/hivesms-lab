@@ -5,7 +5,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { actionError, formToObject, type ActionResult } from "@/lib/action-result";
 import { tenantAction } from "@/lib/tenant-action";
-import { getSession, startSession, switchOrganization } from "@/lib/auth/session";
+import { getSession, startLaravelSession, startSession, switchOrganization } from "@/lib/auth/session";
+import { laravel } from "@/lib/laravel-api";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import type { LaravelIssuedSession } from "@/lib/laravel/session";
 import { passwordSchema } from "@/lib/auth/password";
 import { normalizeBdPhone } from "@/lib/phone";
 import { AppError } from "@/lib/errors";
@@ -64,6 +67,11 @@ export async function acceptInviteAction(token: string): Promise<ActionResult> {
   try {
     const session = await getSession();
     if (!session) throw new AppError("UNAUTHORIZED", "Sign in first.");
+    if (laravelEnabled("auth")) {
+      // Laravel checks the invited email, joins the organization and makes it the active one.
+      await laravel.post("auth/invitations/accept", { token });
+      redirect("/dashboard?joined=1");
+    }
     orgId = await acceptInvitation(token, session.user.id);
     await switchOrganization(orgId);
   } catch (err) {
@@ -80,6 +88,15 @@ export async function inviteSignupAction(_prev: unknown, formData: FormData): Pr
     const phone = input.phone ? normalizeBdPhone(input.phone) : null;
     if (input.phone && !phone) throw new AppError("VALIDATION_ERROR", "Enter a valid Bangladesh mobile number.", { field: "phone" });
     const token = String(raw.token ?? "");
+    if (laravelEnabled("auth")) {
+      const { data } = await laravel.post<LaravelIssuedSession>(
+        "auth/invitations/signup",
+        { token, name: input.name, phone, password: input.password, confirmPassword: input.confirmPassword },
+        { auth: false },
+      );
+      await startLaravelSession(data);
+      redirect("/dashboard?joined=1");
+    }
     const user = await createUserForInvitation(token, { name: input.name, phone, password: input.password });
     const orgId = await acceptInvitation(token, user.id);
     await startSession(user.id, orgId, false);

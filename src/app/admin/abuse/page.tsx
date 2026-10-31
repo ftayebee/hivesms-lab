@@ -6,7 +6,8 @@ import { Input, NativeSelect } from "@/components/ui/input";
 import { EmptyState, PageHeader } from "@/components/shared/states";
 import { AdminActionButton, AdminForm, AdminStatusSelect } from "@/components/admin/admin-ui";
 import { requirePlatform } from "@/lib/auth/session";
-import { db } from "@/lib/db";
+import { abusePage } from "@/features/admin/page-data";
+import { laravelPage } from "@/lib/laravel-api";
 import { formatDateTime } from "@/lib/format";
 import { abuseStatusAction, addBlocklistAction, leadStatusAction, removeBlocklistAction } from "@/features/admin/actions";
 
@@ -14,12 +15,7 @@ export const metadata = { title: "Abuse & leads" };
 
 export default async function AdminAbusePage() {
   await requirePlatform("admin:abuse:manage");
-  const [reports, leads, blocklist] = await Promise.all([
-    db.abuseReport.findMany({ orderBy: [{ status: "asc" }, { createdAt: "desc" }], take: 50 }),
-    db.contactRequest.findMany({ orderBy: { createdAt: "desc" }, take: 50 }),
-    db.blocklistEntry.findMany({ orderBy: { createdAt: "desc" } }),
-  ]);
-  const orgNames = new Map((await db.organization.findMany({ where: { id: { in: reports.map((r) => r.organizationId).filter((x): x is string => !!x) } }, select: { id: true, name: true } })).map((o) => [o.id, o.name]));
+  const { reports, leads, blocklist, orgNames } = await laravelPage(() => abusePage());
   return (
     <>
       <PageHeader title="Abuse, blocklist and leads" />

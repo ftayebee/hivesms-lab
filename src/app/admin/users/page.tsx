@@ -1,16 +1,21 @@
 import Link from "next/link";
 import { Search, UserCog } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Field } from "@/components/ui/field";
+import { Alert } from "@/components/ui/misc";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Input, NativeSelect } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DataTable, Pagination, parsePage } from "@/components/ui/table";
 import { EmptyState, PageHeader } from "@/components/shared/states";
-import { AdminActionButton, AdminStatusSelect } from "@/components/admin/admin-ui";
+import { AccessChangeButton, AdminForm } from "@/components/admin/admin-ui";
 import { requirePlatform } from "@/lib/auth/session";
-import { formatDate, formatRelative } from "@/lib/format";
+import { formatDate, formatDateTime, formatRelative } from "@/lib/format";
+import { laravelPage } from "@/lib/laravel-api";
+import { staffHistory, superAdminAvailable } from "@/features/admin/super-admin";
 import { ADMIN_PAGE, listUsers } from "@/features/admin/service";
-import { updateUserAccessAction } from "@/features/admin/actions";
+import { inviteStaffAction, updateUserAccessAction } from "@/features/admin/actions";
 
 export const metadata = { title: "Users" };
 
@@ -23,17 +28,46 @@ export default async function AdminUsersPage({ searchParams }: PageProps<"/admin
   const role = ROLES.find((r) => r === sp.role);
   const page = parsePage(sp.page);
   const { rows, total } = await listUsers({ q: q || undefined, role, page });
-  const roleAction = async (userId: string, platformRole: string) => {
-    "use server";
-    return updateUserAccessAction(userId, { platformRole });
-  };
-  const statusAction = async (userId: string, status: string) => {
-    "use server";
-    return updateUserAccessAction(userId, { status });
-  };
+  const laravelAdmin = superAdminAvailable();
+  const history = laravelAdmin ? await laravelPage(() => staffHistory(1)) : null;
   return (
     <>
-      <PageHeader title="Users" description="All user accounts. Platform roles grant access to this admin panel; changing a role signs the user out." />
+      <PageHeader title="Users & staff" description="All user accounts. Platform roles grant access to this admin panel. Every access change needs a reason and your password, signs the user out and is audited." />
+      {laravelAdmin ? (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Invite staff</CardTitle>
+            <CardDescription>Grants a staff role to an existing account, or creates the account and e-mails a link to set a password. Nobody sees another person&apos;s password. Give the least privilege that does the job.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <AdminForm action={inviteStaffAction} className="grid gap-4 sm:grid-cols-2" submitLabel="Invite">
+              <Field label="E-mail" required>
+                <Input name="email" type="email" autoComplete="off" maxLength={254} />
+              </Field>
+              <Field label="Name" required>
+                <Input name="name" maxLength={100} />
+              </Field>
+              <Field label="Staff role" required hint="Support: customers, messages, reviews, support. Admin: also billing review and finance reports. Super admin: everything, including money and staff.">
+                <NativeSelect name="role" defaultValue="SUPPORT">
+                  <option value="SUPPORT">support</option>
+                  <option value="ADMIN">admin</option>
+                  <option value="SUPER_ADMIN">super admin (platform owner)</option>
+                </NativeSelect>
+              </Field>
+              <Field label="Reason" required>
+                <Input name="reason" maxLength={500} />
+              </Field>
+              <Field label="Your current password" required>
+                <PasswordInput name="currentPassword" autoComplete="current-password" maxLength={200} />
+              </Field>
+            </AdminForm>
+          </CardContent>
+        </Card>
+      ) : (
+        <Alert tone="info" className="mb-6" title="Staff invitations">
+          Inviting staff and the privileged-action history need the Laravel admin API (LARAVEL_FEATURES <code>admin</code>). Role and status changes below already require a reason and your password.
+        </Alert>
+      )}
       <Card>
         <form method="get" className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row" role="search">
           <div className="relative flex-1">
@@ -79,8 +113,8 @@ export default async function AdminUsersPage({ searchParams }: PageProps<"/admin
                   <span className="text-xs text-muted-foreground">{u.platformRole.toLowerCase()} (you)</span>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <AdminStatusSelect label={`Platform role for ${u.email}`} value={u.platformRole} options={ROLES.map((r) => ({ value: r, label: r.replace("_", " ").toLowerCase() }))} action={roleAction.bind(null, u.id)} />
-                    <AdminActionButton action={statusAction.bind(null, u.id, u.status === "ACTIVE" ? "SUSPENDED" : "ACTIVE")} label={u.status === "ACTIVE" ? "Suspend" : "Restore"} variant={u.status === "ACTIVE" ? "ghost" : "secondary"} confirmTitle={u.status === "ACTIVE" ? `Suspend ${u.email}?` : undefined} confirmDescription={u.status === "ACTIVE" ? "They are signed out everywhere and cannot sign in." : undefined} />
+                    <Badge tone={u.platformRole === "USER" ? "outline" : "primary"}>{u.platformRole.replace("_", " ").toLowerCase()}</Badge>
+                    <AccessChangeButton email={u.email} role={u.platformRole} status={u.status} roles={ROLES} action={updateUserAccessAction.bind(null, u.id)} />
                   </div>
                 ),
             },
@@ -88,6 +122,25 @@ export default async function AdminUsersPage({ searchParams }: PageProps<"/admin
         />
         {rows.length > 0 && <Pagination page={page} pageSize={ADMIN_PAGE} total={total} searchParams={sp} basePath="/admin/users" />}
       </Card>
+      {history && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Privileged staff actions</CardTitle>
+            <CardDescription>Access changes, invitations, owner bootstrap and failed password confirmations (latest 50).</CardDescription>
+          </CardHeader>
+          <ul className="divide-y divide-border text-sm">
+            {history.rows.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-center gap-2 px-5 py-2.5">
+                <code className="font-mono text-xs">{a.action}</code>
+                <span className="text-muted-foreground">{a.actor?.name ?? a.actorType.toLowerCase()}</span>
+                {typeof a.metadata?.reason === "string" && <span className="min-w-0 flex-1 truncate text-muted-foreground">“{a.metadata.reason}”</span>}
+                <span className="ml-auto text-xs text-muted-foreground">{a.createdAt ? formatDateTime(a.createdAt) : ""}</span>
+              </li>
+            ))}
+            {history.rows.length === 0 && <li className="px-5 py-4 text-muted-foreground">No privileged actions yet.</li>}
+          </ul>
+        </Card>
+      )}
     </>
   );
 }

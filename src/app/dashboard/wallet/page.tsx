@@ -8,11 +8,8 @@ import { tenantWithPermission } from "@/lib/auth/session";
 import { can } from "@/lib/auth/context";
 import { formatBDT, formatDate, formatDateTime, formatNumber } from "@/lib/format";
 import { getT } from "@/i18n/server";
-import { getBillingPolicy } from "@/services/settings";
-import { getActivePackages } from "@/services/billing/pricing";
-import { listAvailablePaymentProviders } from "@/services/payments";
-import { getBalanceSummary } from "@/features/reports/queries";
-import { listInvoices, listPayments } from "@/features/wallet/service";
+import { loadWalletPage } from "@/features/wallet/service";
+import { laravelPage } from "@/lib/laravel-api";
 import { TopUpForm } from "@/features/wallet/components/top-up-form";
 import { CancelPaymentButton, ThresholdForm } from "@/features/wallet/components/wallet-controls";
 
@@ -23,14 +20,7 @@ export default async function WalletPage() {
   if (!allowed) return <PermissionDenied permission="billing:read" />;
   const { t } = await getT();
   const canManage = can(ctx, "billing:manage");
-  const [summary, policy, packages, providers, payments, invoices] = await Promise.all([
-    getBalanceSummary(ctx),
-    getBillingPolicy(),
-    getActivePackages(),
-    canManage ? listAvailablePaymentProviders() : Promise.resolve([]),
-    listPayments(ctx, 10),
-    listInvoices(ctx, 20),
-  ]);
+  const { summary, policy, packages, providers, payments, invoices } = await laravelPage(() => loadWalletPage(ctx, canManage));
 
   return (
     <>

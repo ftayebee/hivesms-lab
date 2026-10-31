@@ -4,9 +4,8 @@
  * SMSFlow BD design tokens (see docs/03-design-system.md).
  * Rebrand by editing these variables. Components only use semantic tokens.
  */
-@custom-variant dark (&:where(.dark, .dark *));
-
 :root {
+  color-scheme: light;
   --background: #ffffff;
   --surface: #f6f8fb;
   --card: #ffffff;
@@ -42,45 +41,6 @@
   --viz-failed: #d4413b;
   --shadow-color: 14 26 54;
   --code-bg: #0e1a36;
-  --code-foreground: #e7ecf6;
-}
-
-.dark {
-  --background: #0a0f1e;
-  --surface: #0f162a;
-  --card: #121a31;
-  --card-foreground: #e7ecf6;
-  --foreground: #e7ecf6;
-  --muted: #18213b;
-  --muted-foreground: #95a2be;
-  --border: #223055;
-  --input: #2b3a63;
-  --primary: #7892ff;
-  --primary-hover: #93a7ff;
-  --primary-foreground: #0a0f1e;
-  --primary-soft: #1a2550;
-  --accent: #2cc7b8;
-  --accent-soft: #0f2f33;
-  --accent-foreground: #0a0f1e;
-  --success: #4ade80;
-  --success-soft: #0f2a1c;
-  --warning: #fbbf24;
-  --warning-soft: #2e2410;
-  --destructive: #f87171;
-  --destructive-soft: #341418;
-  --destructive-foreground: #0a0f1e;
-  --ring: #7892ff;
-  /* Chart palette stepped for the dark surface (validated separately) */
-  --chart-1: #5a79ec;
-  --chart-2: #18a093;
-  --chart-3: #c98500;
-  --chart-4: #d55181;
-  --chart-5: #8e6fe0;
-  --viz-delivered: #2aa86c;
-  --viz-pending: #5a79ec;
-  --viz-failed: #e0574f;
-  --shadow-color: 0 0 0;
-  --code-bg: #070b16;
   --code-foreground: #e7ecf6;
 }
 

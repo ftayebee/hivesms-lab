@@ -8,6 +8,8 @@ import { normalizeBdPhone } from "@/lib/phone";
 import { toCsv } from "@/lib/csv";
 import type { DateRange } from "./range";
 import type { MessageFilters } from "./queries";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 
 export const REPORT_PAGE_SIZE = 25;
 
@@ -59,6 +61,7 @@ export async function listMessages(ctx: TenantContext, range: DateRange, f: Mess
 
 export async function getMessage(ctx: TenantContext, id: string) {
   requirePermission(ctx, "reports:read");
+  if (laravelEnabled("reports")) return viaLaravel.getMessage(id);
   const m = await db.message.findFirst({
     where: { id, organizationId: ctx.organizationId },
     include: { events: { orderBy: { occurredAt: "asc" } }, campaign: { select: { id: true, name: true } }, apiKey: { select: { name: true, prefix: true } } },

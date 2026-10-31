@@ -8,7 +8,7 @@ export const APP_TIMEZONE = "Asia/Dhaka";
 
 const intlLocale = (locale: Locale) => (locale === "bn" ? "bn-BD" : "en-BD");
 
-type MoneyLike = number | string | { toString(): string };
+export type MoneyLike = number | string | { toString(): string };
 
 export function formatBDT(value: MoneyLike, locale: Locale = "en", opts: { decimals?: number } = {}): string {
   const n = typeof value === "number" ? value : Number(value.toString());

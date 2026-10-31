@@ -30,7 +30,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
-import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { SheetContent } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/menu";
 import { Avatar } from "@/components/ui/misc";
@@ -207,7 +206,6 @@ export function DashboardShell({ user, organization, organizations, permissions,
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
-            <ThemeToggle />
             <Link
               href="/dashboard/notifications"
               className="relative grid size-9 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"

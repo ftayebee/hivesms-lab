@@ -42,6 +42,7 @@ import {
   smsPolicySchema,
   smsProviderSchema,
 } from "./config";
+import { inviteStaff, providerCostSchema, refundPayment, saveProviderCosts, sendPasswordReset, staffInviteSchema } from "./super-admin";
 
 const uuid = z.uuid();
 const reasonText = z.string().trim().max(500).optional().transform((v) => v || null);
@@ -69,9 +70,9 @@ export async function setOrgStatusAction(id: string, status: "ACTIVE" | "SUSPEND
 
 export async function adjustWalletAction(_p: unknown, fd: FormData): Promise<ActionResult> {
   const raw = formToObject(fd);
-  return adminAction("admin:billing:manage", async (a) => {
-    await adjustWallet(a, uuid.parse(raw.orgId), walletAdjustSchema.parse(raw));
-    return ok("Wallet adjusted.");
+  return adminAction("admin:wallet:adjust", async (a) => {
+    const r = await adjustWallet(a, uuid.parse(raw.orgId), walletAdjustSchema.parse(raw));
+    return ok(r.replayed ? "This adjustment was already applied (not repeated)." : "Wallet adjusted.");
   }, raw);
 }
 
@@ -128,14 +129,52 @@ export async function ticketStatusAction(id: string, status: string, assignToMe 
 
 // ─── Users, abuse, leads ───
 
-export async function updateUserAccessAction(userId: string, input: { platformRole?: string; status?: string }): Promise<ActionResult> {
+const privileged = {
+  reason: z.string().trim().min(5, "Give a reason (at least 5 characters).").max(500),
+  currentPassword: z.string().min(1, "Confirm with your current password.").max(200),
+};
+
+export async function updateUserAccessAction(userId: string, input: { platformRole?: string; status?: string }, reason?: string, currentPassword?: string): Promise<ActionResult> {
   return adminAction("admin:users:manage", async (a) => {
     const parsed = z
-      .object({ platformRole: z.enum(["USER", "SUPPORT", "ADMIN", "SUPER_ADMIN"]).optional(), status: z.enum(["ACTIVE", "SUSPENDED"]).optional() })
-      .parse(input);
+      .object({ platformRole: z.enum(["USER", "SUPPORT", "ADMIN", "SUPER_ADMIN"]).optional(), status: z.enum(["ACTIVE", "SUSPENDED"]).optional(), ...privileged })
+      .parse({ ...input, reason, currentPassword });
     await updateUserAccess(a, uuid.parse(userId), parsed);
-    return ok("User updated. Their sessions were signed out.");
+    return ok("Access updated. Their sessions were signed out.");
   });
+}
+
+// ─── Super Admin (Laravel only; docs/18) ───
+
+export async function inviteStaffAction(_p: unknown, fd: FormData): Promise<ActionResult> {
+  const raw = formToObject(fd);
+  return adminAction("admin:users:manage", async () => {
+    const r = await inviteStaff(staffInviteSchema.parse(raw));
+    return ok(r.message, "/admin/users");
+  }, raw);
+}
+
+export async function sendPasswordResetAction(userId: string, reason?: string): Promise<ActionResult> {
+  return adminAction("admin:customers:manage", async () => {
+    await sendPasswordReset(uuid.parse(userId), reasonText.parse(reason));
+    return ok("A password-reset link was e-mailed to the account owner.");
+  });
+}
+
+export async function refundPaymentAction(id: string, reason?: string, currentPassword?: string): Promise<ActionResult> {
+  return adminAction("admin:payments:refund", async () => {
+    const p = z.object(privileged).parse({ reason, currentPassword });
+    await refundPayment(uuid.parse(id), p.reason, p.currentPassword);
+    return ok("Payment marked refunded and the credit removed from the wallet.", "/admin/payments");
+  });
+}
+
+export async function saveProviderCostsAction(_p: unknown, fd: FormData): Promise<ActionResult> {
+  const raw = formToObject(fd);
+  return adminAction("admin:costs:manage", async () => {
+    await saveProviderCosts(providerCostSchema.parse(raw));
+    return ok("Provider costs saved. Margin figures are estimates based on these rates.", "/admin/costs");
+  }, raw);
 }
 
 export async function abuseStatusAction(id: string, status: string, note?: string): Promise<ActionResult> {

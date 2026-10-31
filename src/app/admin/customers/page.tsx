@@ -7,18 +7,28 @@ import { Button } from "@/components/ui/button";
 import { DataTable, Pagination, parsePage } from "@/components/ui/table";
 import { EmptyState, PageHeader } from "@/components/shared/states";
 import { requirePlatform } from "@/lib/auth/session";
+import { platformCan } from "@/lib/auth/permissions";
 import { formatBDT, formatDate, formatNumber } from "@/lib/format";
 import { ADMIN_PAGE, listOrganizations } from "@/features/admin/service";
+import { plansForControls } from "@/features/admin/page-data";
+import { laravelPage } from "@/lib/laravel-api";
 
 export const metadata = { title: "Customers" };
 
 export default async function AdminCustomersPage({ searchParams }: PageProps<"/admin/customers">) {
-  await requirePlatform("admin:customers:read");
+  const session = await requirePlatform("admin:customers:read");
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q.trim().slice(0, 100) : "";
   const status = sp.status === "ACTIVE" || sp.status === "SUSPENDED" ? sp.status : undefined;
   const page = parsePage(sp.page);
-  const { rows, total } = await listOrganizations({ q: q || undefined, status, page });
+  const day = (v: unknown) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : undefined);
+  // The plan list needs the pricing permission on the Laravel path; support staff filter without it.
+  const plans = await laravelPage(() => plansForControls(platformCan(session.user.platformRole, "admin:pricing:manage")));
+  const planId = typeof sp.plan === "string" && (sp.plan === "none" || plans.some((p) => p.id === sp.plan)) ? sp.plan : undefined;
+  const from = day(sp.from);
+  const to = day(sp.to);
+  const review = sp.review === "1";
+  const { rows, total } = await laravelPage(() => listOrganizations({ q: q || undefined, status, planId, from, to, review, page }));
   return (
     <>
       <PageHeader title="Customers" description={`${formatNumber(total)} organizations`} />
@@ -29,8 +39,32 @@ export default async function AdminCustomersPage({ searchParams }: PageProps<"/a
             <label htmlFor="aq" className="sr-only">
               Search
             </label>
-            <Input id="aq" name="q" defaultValue={q} placeholder="Organization name or member email" className="pl-9" />
+            <Input id="aq" name="q" defaultValue={q} placeholder="Organization, ID, member e-mail, name or phone" className="pl-9" />
           </div>
+          <label htmlFor="ap" className="sr-only">
+            Plan
+          </label>
+          <NativeSelect id="ap" name="plan" defaultValue={planId ?? ""} className="sm:w-40">
+            <option value="">All plans</option>
+            <option value="none">Default plan</option>
+            {plans.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </NativeSelect>
+          <label className="sr-only" htmlFor="afrom">
+            Registered from
+          </label>
+          <Input id="afrom" type="date" name="from" defaultValue={from} className="sm:w-40" title="Registered from" />
+          <label className="sr-only" htmlFor="ato">
+            Registered until
+          </label>
+          <Input id="ato" type="date" name="to" defaultValue={to} className="sm:w-40" title="Registered until" />
+          <label className="flex items-center gap-2 whitespace-nowrap text-sm">
+            <input type="checkbox" name="review" value="1" defaultChecked={review} className="size-4 accent-[var(--primary)]" />
+            Under review
+          </label>
           <label htmlFor="as" className="sr-only">
             Status
           </label>

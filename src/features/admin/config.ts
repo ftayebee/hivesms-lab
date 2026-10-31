@@ -5,6 +5,8 @@ import { AppError, notFound } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { clearSettingsCache, getBillingPolicy, getPaymentSettings, getSiteContent, getSmsPolicy, getSmsProviderSettings, setSecretSetting, setSetting, type SecretKey } from "@/services/settings";
 import { adminActor, type AdminContext } from "./guard";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 
 const money = (max = 1_000_000) => z.coerce.number().min(0).max(max);
 const checkbox = z.preprocess((v) => v === true || v === "on" || v === "true", z.boolean());
@@ -31,14 +33,18 @@ export const planSchema = z.object({
   highlighted: checkbox,
   active: checkbox,
   sortOrder: z.coerce.number().int().min(0).max(100).default(0),
+  // Why the plan changes (required when editing an existing plan; recorded in the audit log).
+  reason: z.string().trim().max(500).optional().transform((v) => v || null),
 });
 
 export async function savePlan(admin: AdminContext, input: z.infer<typeof planSchema>, id?: string) {
+  if (laravelEnabled("admin")) return viaLaravel.savePlan(input, id);
   const clash = await db.pricingPlan.findFirst({ where: { key: input.key, ...(id ? { id: { not: id } } : {}) } });
   if (clash) throw new AppError("CONFLICT", "Another plan uses this key.", { field: "key" });
   const before = id ? await db.pricingPlan.findUnique({ where: { id } }) : null;
   if (id && !before) throw notFound("Plan");
-  const data = { ...input };
+  if (id && (!input.reason || input.reason.length < 5)) throw new AppError("VALIDATION_ERROR", "Say why the plan changes (at least 5 characters).", { field: "reason" });
+  const { reason, ...data } = input;
   const plan = await db.$transaction(async (tx) => {
     if (input.isDefault) await tx.pricingPlan.updateMany({ where: { isDefault: true, ...(id ? { id: { not: id } } : {}) }, data: { isDefault: false } });
     return id ? tx.pricingPlan.update({ where: { id }, data }) : tx.pricingPlan.create({ data });
@@ -49,7 +55,7 @@ export async function savePlan(admin: AdminContext, input: z.infer<typeof planSc
     targetType: "pricing_plan",
     targetId: plan.id,
     ip: admin.ip,
-    metadata: { before: before ? JSON.parse(JSON.stringify(before)) : null, after: JSON.parse(JSON.stringify(plan)) },
+    metadata: { before: before ? JSON.parse(JSON.stringify(before)) : null, after: JSON.parse(JSON.stringify(plan)), reason },
   });
   return plan;
 }
@@ -66,6 +72,7 @@ export const packageSchema = z.object({
 });
 
 export async function savePackage(admin: AdminContext, input: z.infer<typeof packageSchema>, id?: string) {
+  if (laravelEnabled("admin")) return viaLaravel.savePackage(input, id);
   const before = id ? await db.creditPackage.findUnique({ where: { id } }) : null;
   if (id && !before) throw notFound("Package");
   const pkg = id ? await db.creditPackage.update({ where: { id }, data: input }) : await db.creditPackage.create({ data: input });
@@ -84,6 +91,7 @@ export const billingPolicySchema = z.object({
 
 export async function saveBillingPolicy(admin: AdminContext, input: z.infer<typeof billingPolicySchema>) {
   if (input.maximumTopUp < input.minimumTopUp) throw new AppError("VALIDATION_ERROR", "Maximum must be at least the minimum.", { field: "maximumTopUp" });
+  if (laravelEnabled("admin")) return viaLaravel.saveBillingPolicy(input);
   const before = await getBillingPolicy();
   const value = { ...input, pricesExcludeVat: true, balanceValidityMonths: input.balanceValidityMonths || null };
   await setSetting("billing.policy", value, admin.userId);
@@ -107,6 +115,7 @@ export const smsPolicySchema = z.object({
 });
 
 export async function saveSmsPolicy(admin: AdminContext, input: z.infer<typeof smsPolicySchema>) {
+  if (laravelEnabled("admin")) return viaLaravel.saveSmsPolicy(input);
   const before = await getSmsPolicy();
   const value = {
     segmentation: { gsm7: { single: input.gsmSingle, multipart: input.gsmMulti }, ucs2: { single: input.ucsSingle, multipart: input.ucsMulti }, maxSegments: input.maxSegments },
@@ -142,6 +151,8 @@ async function applySecret(key: SecretKey, value: string, clear: boolean, admin:
 }
 
 export async function saveSmsProvider(admin: AdminContext, input: z.infer<typeof smsProviderSchema>) {
+  // Laravel refuses the mock provider in production and validates the URL itself.
+  if (laravelEnabled("admin")) return viaLaravel.saveSmsProvider(input);
   if (input.provider === "http" && !/^https:\/\//.test(input.url)) throw new AppError("VALIDATION_ERROR", "Enter the provider's HTTPS endpoint.", { field: "url" });
   if (input.provider === "mock" && process.env.NODE_ENV === "production") throw new AppError("VALIDATION_ERROR", "The mock provider cannot be used in production.", { field: "provider" });
   const before = await getSmsProviderSettings();
@@ -178,6 +189,7 @@ export const paymentSettingsSchema = z.object({
 });
 
 export async function savePaymentSettings(admin: AdminContext, input: z.infer<typeof paymentSettingsSchema>) {
+  if (laravelEnabled("admin")) return viaLaravel.savePaymentSettings(input);
   const before = await getPaymentSettings();
   const value = { enabled: input.enabled, manualInstructions: input.manualInstructions, sslcommerz: { storeId: input.sslStoreId, live: input.sslLive } };
   await setSetting("payments", value, admin.userId);
@@ -200,6 +212,7 @@ export const siteContentSchema = z.object({
 });
 
 export async function saveSiteContent(admin: AdminContext, input: z.infer<typeof siteContentSchema>) {
+  if (laravelEnabled("admin")) return viaLaravel.saveSiteContent(input);
   const before = await getSiteContent();
   const value = {
     contact: { email: input.email, supportEmail: input.supportEmail, salesEmail: input.salesEmail, abuseEmail: input.abuseEmail, phone: input.phone, address: input.address, hours: input.hours },
@@ -218,12 +231,14 @@ export const blocklistSchema = z.object({
 });
 
 export async function addBlocklist(admin: AdminContext, input: z.infer<typeof blocklistSchema>) {
+  if (laravelEnabled("admin")) return viaLaravel.addBlocklist(input);
   const value = input.type === "URL_DOMAIN" ? input.value.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "") : input.type === "KEYWORD" ? input.value.toLowerCase() : input.value;
   const e = await db.blocklistEntry.upsert({ where: { type_value: { type: input.type, value } }, create: { type: input.type, value, reason: input.reason, createdById: admin.userId }, update: { reason: input.reason } });
   await audit({ action: "admin.blocklist.add", actor: adminActor(admin), targetType: "blocklist", targetId: e.id, metadata: { type: input.type, value } });
 }
 
 export async function removeBlocklist(admin: AdminContext, id: string) {
+  if (laravelEnabled("admin")) return viaLaravel.removeBlocklist(id);
   const e = await db.blocklistEntry.delete({ where: { id } });
   await audit({ action: "admin.blocklist.remove", actor: adminActor(admin), targetType: "blocklist", targetId: id, metadata: { type: e.type, value: e.value } });
 }

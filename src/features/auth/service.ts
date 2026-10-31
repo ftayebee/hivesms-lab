@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { db } from "@/lib/db";
-import { AppError } from "@/lib/errors";
+import { isDatabaseUnavailable, uniqueViolationTarget } from "@/lib/db-errors";
+import { AppError, isAppError } from "@/lib/errors";
 import { audit } from "@/lib/audit";
 import { logger, maskEmail, maskPhone } from "@/lib/logger";
 import { hmacSha256, randomNumericCode, randomToken, safeEqual, sha256 } from "@/lib/crypto";
@@ -41,30 +42,55 @@ export function phoneVerificationEnabled() {
   return process.env.FEATURE_PHONE_VERIFICATION === "true";
 }
 
+const EMAIL_TAKEN = "An account with this email already exists. Sign in instead.";
+const PHONE_TAKEN = "This mobile number is already registered.";
+
+/** Maps database failures during sign-up to safe, specific messages (details are only logged). */
+function registrationError(err: unknown): unknown {
+  if (isAppError(err)) return err;
+  const unique = uniqueViolationTarget(err);
+  // Two concurrent sign-ups can both pass the pre-check; the unique index decides.
+  if (unique && /phone/i.test(unique)) return new AppError("CONFLICT", PHONE_TAKEN, { field: "phone" });
+  if (unique && /email/i.test(unique)) return new AppError("CONFLICT", EMAIL_TAKEN, { field: "email" });
+  logger.error({ err, databaseUnavailable: isDatabaseUnavailable(err) }, "registration failed");
+  return new AppError("INTERNAL_ERROR", "We couldn't create your account right now. Please try again shortly.");
+}
+
 export async function registerAccount(input: RegisterInput, meta: RequestMeta) {
   if (!registrationOpen()) throw new AppError("FEATURE_DISABLED", "Registration is currently closed. Contact sales to open an account.");
-  const rl = await rateLimit(`register:${meta.ip ?? "unknown"}`, RateLimits.registerPerIp);
-  if (!rl.allowed) throw new AppError("RATE_LIMITED", "Too many sign-up attempts from this network. Try again later.");
 
-  const existing = await db.user.findFirst({ where: { OR: [{ email: input.email }, { phone: input.phone }] }, select: { email: true } });
-  if (existing) {
-    throw new AppError(
-      "CONFLICT",
-      existing.email === input.email ? "An account with this email already exists. Sign in instead." : "This mobile number is already registered.",
-      { field: existing.email === input.email ? "email" : "phone" },
-    );
+  let created: { user: { id: string; email: string; name: string }; org: { id: string } };
+  try {
+    const rl = await rateLimit(`register:${meta.ip ?? "unknown"}`, RateLimits.registerPerIp);
+    if (!rl.allowed) throw new AppError("RATE_LIMITED", "Too many sign-up attempts from this network. Try again later.");
+
+    const existing = await db.user.findFirst({ where: { OR: [{ email: input.email }, { phone: input.phone }] }, select: { email: true } });
+    if (existing) {
+      const emailTaken = existing.email === input.email;
+      throw new AppError("CONFLICT", emailTaken ? EMAIL_TAKEN : PHONE_TAKEN, { field: emailTaken ? "email" : "phone" });
+    }
+
+    const passwordHash = await hashPassword(input.password);
+    await ensurePermissionCatalogue();
+    // User, organization, roles, owner membership, wallet and audit entry commit together or not at all.
+    created = await db.$transaction(async (tx) => {
+      const user = await tx.user.create({ data: { name: input.name, email: input.email, phone: input.phone, passwordHash } });
+      const { org } = await createOrganizationWithOwner(tx, { name: input.company, ownerUserId: user.id });
+      await audit({ action: "auth.register", actor: { type: "USER", userId: user.id }, organizationId: org.id, ip: meta.ip, userAgent: meta.userAgent }, tx);
+      return { user, org };
+    });
+  } catch (err) {
+    throw registrationError(err);
   }
 
-  const passwordHash = await hashPassword(input.password);
-  await ensurePermissionCatalogue();
-  const { user, org } = await db.$transaction(async (tx) => {
-    const user = await tx.user.create({ data: { name: input.name, email: input.email, phone: input.phone, passwordHash } });
-    const { org } = await createOrganizationWithOwner(tx, { name: input.company, ownerUserId: user.id });
-    await audit({ action: "auth.register", actor: { type: "USER", userId: user.id }, organizationId: org.id, ip: meta.ip, userAgent: meta.userAgent }, tx);
-    return { user, org };
-  });
-
-  await issueEmailVerification(user.id);
+  const { user, org } = created;
+  // The account exists from here on: follow-up emails must not turn a successful sign-up into an error
+  // (the user can resend the verification link from the dashboard).
+  try {
+    await issueEmailVerification(user.id);
+  } catch (err) {
+    logger.error({ err, user: maskEmail(user.email) }, "could not issue email verification after registration");
+  }
   await sendEmail(emailTemplates.welcome(user.email, user.name));
   logger.info({ user: maskEmail(user.email) }, "account registered");
   return { userId: user.id, organizationId: org.id };

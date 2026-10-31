@@ -8,6 +8,8 @@ import { normalizeBdPhone } from "@/lib/phone";
 import { jsonStringArray } from "@/lib/utils";
 import { parseCsv, toCsv, unescapeCsvCell, CSV_MAX_ROWS } from "@/lib/csv";
 import type { ContactInput, ContactListQuery } from "./schemas";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 
 /**
  * Contacts, groups and the suppression list. Every query is scoped to ctx.organizationId and
@@ -35,6 +37,7 @@ function listWhere(ctx: TenantContext, q: Partial<ContactListQuery>): Prisma.Con
 
 export async function listContacts(ctx: TenantContext, q: ContactListQuery) {
   requirePermission(ctx, "contacts:read");
+  if (laravelEnabled("contacts")) return viaLaravel.listContacts(q);
   const where = listWhere(ctx, q);
   const orderBy: Prisma.ContactOrderByWithRelationInput =
     q.sort === "oldest" ? { createdAt: "asc" } : q.sort === "name" ? { name: "asc" } : { createdAt: "desc" };
@@ -79,6 +82,7 @@ async function syncSuppression(ctx: TenantContext, phone: string, consent: Conse
 
 export async function createContact(ctx: TenantContext, input: ContactInput) {
   requirePermission(ctx, "contacts:write");
+  if (laravelEnabled("contacts")) return viaLaravel.createContact(input);
   await assertGroupsOwned(ctx, input.groupIds);
   const existing = await db.contact.findUnique({ where: { organizationId_phone: { organizationId: ctx.organizationId, phone: input.phone } } });
   if (existing && !existing.deletedAt) {
@@ -110,6 +114,7 @@ export async function createContact(ctx: TenantContext, input: ContactInput) {
 
 export async function updateContact(ctx: TenantContext, id: string, input: ContactInput) {
   requirePermission(ctx, "contacts:write");
+  if (laravelEnabled("contacts")) return viaLaravel.updateContact(id, input);
   const current = await getContact(ctx, id);
   await assertGroupsOwned(ctx, input.groupIds);
   if (input.phone !== current.phone) {
@@ -153,6 +158,7 @@ export async function bulkContacts(ctx: TenantContext, ids: string[], action: Bu
   requirePermission(ctx, "contacts:write");
   if (!ids.length) throw new AppError("VALIDATION_ERROR", "Select at least one contact.");
   if (ids.length > 1000) throw new AppError("VALIDATION_ERROR", "Select at most 1,000 contacts at a time.");
+  if (laravelEnabled("contacts")) return viaLaravel.bulkContacts(ids, action);
   // Only ids that belong to this organization are touched.
   const owned = await db.contact.findMany({ where: { id: { in: ids }, organizationId: ctx.organizationId, deletedAt: null }, select: { id: true, phone: true } });
   const ownedIds = owned.map((c) => c.id);
@@ -359,6 +365,7 @@ export async function exportContactsCsv(ctx: TenantContext, q: Partial<ContactLi
 
 export async function listGroups(ctx: TenantContext) {
   requirePermission(ctx, "contacts:read");
+  if (laravelEnabled("contacts")) return viaLaravel.listGroups();
   const groups = await db.contactGroup.findMany({
     where: { organizationId: ctx.organizationId, deletedAt: null },
     orderBy: { name: "asc" },
@@ -369,6 +376,7 @@ export async function listGroups(ctx: TenantContext) {
 
 export async function saveGroup(ctx: TenantContext, input: { name: string; description: string | null }, id?: string) {
   requirePermission(ctx, "contacts:write");
+  if (laravelEnabled("contacts")) return viaLaravel.saveGroup(input, id);
   const clash = await db.contactGroup.findFirst({ where: { organizationId: ctx.organizationId, name: input.name, ...(id ? { id: { not: id } } : {}) } });
   if (clash && !clash.deletedAt) throw new AppError("CONFLICT", "A group with this name already exists.", { field: "name" });
   if (clash?.deletedAt) await db.contactGroup.delete({ where: { id: clash.id } });
@@ -384,6 +392,7 @@ export async function saveGroup(ctx: TenantContext, input: { name: string; descr
 
 export async function deleteGroup(ctx: TenantContext, id: string) {
   requirePermission(ctx, "contacts:write");
+  if (laravelEnabled("contacts")) return viaLaravel.deleteGroup(id);
   const g = await db.contactGroup.findFirst({ where: { id, organizationId: ctx.organizationId, deletedAt: null } });
   if (!g) throw notFound("Group");
   await db.$transaction([db.contactGroupMember.deleteMany({ where: { groupId: id } }), db.contactGroup.update({ where: { id }, data: { deletedAt: new Date() } })]);
@@ -394,6 +403,7 @@ export async function deleteGroup(ctx: TenantContext, id: string) {
 
 export async function listSuppression(ctx: TenantContext, page: number, q?: string) {
   requirePermission(ctx, "contacts:read");
+  if (laravelEnabled("contacts")) return viaLaravel.listSuppression(page, q);
   const where: Prisma.SuppressionEntryWhereInput = { organizationId: ctx.organizationId, ...(q ? { phone: { contains: normalizeBdPhone(q) ?? q.replace(/[^\d+]/g, "") } } : {}) };
   const [rows, total] = await Promise.all([
     db.suppressionEntry.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * CONTACTS_PAGE_SIZE, take: CONTACTS_PAGE_SIZE }),
@@ -404,6 +414,7 @@ export async function listSuppression(ctx: TenantContext, page: number, q?: stri
 
 export async function addSuppression(ctx: TenantContext, input: { phone: string; reason: "OPT_OUT" | "MANUAL" | "COMPLAINT" | "INVALID"; note: string | null }) {
   requirePermission(ctx, "contacts:write");
+  if (laravelEnabled("contacts")) return viaLaravel.addSuppression(input);
   const entry = await db.suppressionEntry.upsert({
     where: { organizationId_phone: { organizationId: ctx.organizationId, phone: input.phone } },
     create: { organizationId: ctx.organizationId, phone: input.phone, reason: input.reason, note: input.note, source: "manual" },
@@ -416,6 +427,7 @@ export async function addSuppression(ctx: TenantContext, input: { phone: string;
 
 export async function removeSuppression(ctx: TenantContext, id: string) {
   requirePermission(ctx, "contacts:write");
+  if (laravelEnabled("contacts")) return viaLaravel.removeSuppression(id);
   const e = await db.suppressionEntry.findFirst({ where: { id, organizationId: ctx.organizationId } });
   if (!e) throw notFound("Entry");
   await db.suppressionEntry.delete({ where: { id } });
@@ -423,6 +435,7 @@ export async function removeSuppression(ctx: TenantContext, id: string) {
 }
 
 export async function allTags(ctx: TenantContext): Promise<string[]> {
+  if (laravelEnabled("contacts")) return viaLaravel.allTags();
   // Tags are JSON arrays; distinct values are collected here because JSON_TABLE is not available
   // on MariaDB < 10.6. Only rows that have tags are read.
   const rows = await db.$queryRaw<{ tags: string }[]>`

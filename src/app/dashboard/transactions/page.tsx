@@ -11,6 +11,7 @@ import { EmptyState, PageHeader, PermissionDenied } from "@/components/shared/st
 import { tenantWithPermission } from "@/lib/auth/session";
 import { formatBDT, formatDateTime } from "@/lib/format";
 import { parseRange } from "@/features/reports/range";
+import { laravelPage } from "@/lib/laravel-api";
 import { listTransactions, TX_PAGE_SIZE, txFilterSchema } from "@/features/wallet/service";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +34,7 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/das
   const range = parseRange(sp, "90d");
   const f = txFilterSchema.parse(sp);
   const page = parsePage(sp.page);
-  const { rows, total, credit, debit } = await listTransactions(ctx, range, f, page);
+  const { rows, total, credit, debit } = await laravelPage(() => listTransactions(ctx, range, f, page));
   const qs = new URLSearchParams(Object.entries(sp).filter(([k, v]) => typeof v === "string" && k !== "page") as [string, string][]).toString();
 
   return (

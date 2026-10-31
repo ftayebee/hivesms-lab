@@ -2,7 +2,11 @@ import type { PricingPlan } from "@/generated/prisma/client";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { jsonStringArray } from "@/lib/utils";
-import { defaultPlans, defaultCreditPackages } from "@/config/pricing";
+import { defaultPlans, defaultCreditPackages, defaultBillingPolicy } from "@/config/pricing";
+import { getBillingPolicy } from "@/services/settings";
+import { unstable_rethrow } from "next/navigation";
+import { laravelData } from "@/lib/laravel-api";
+import { laravelEnabled } from "@/lib/laravel/flags";
 
 /**
  * Pricing plans and packages from the database, with config fallbacks so public pages still
@@ -52,6 +56,61 @@ export async function getPublicPlans(): Promise<{ plans: PublicPlan[]; source: "
     logger.warn({ err: (err as Error).message }, "pricing plans unavailable, using config defaults");
   }
   return { plans: defaultPlans.map((p) => ({ ...p, id: null })), source: "defaults" };
+}
+
+/**
+ * Everything the public pricing page renders. With LARAVEL_FEATURES `public` it comes from
+ * GET /public/pricing; either way the page falls back to the config defaults when the source is
+ * unreachable (e.g. during a container image build).
+ */
+export async function loadPublicPricing() {
+  if (laravelEnabled("public")) {
+    try {
+      const d = await laravelData<{
+        plans: Array<Omit<PublicPlan, "minRechargeAmount" | "transactionalNonMasking" | "transactionalMasking" | "promotionalNonMasking" | "promotionalMasking" | "senderIdFee" | "features"> & Record<"minRechargeAmount" | "transactionalNonMasking" | "transactionalMasking" | "promotionalNonMasking" | "promotionalMasking" | "senderIdFee", string> & { features: unknown }>;
+        packages: Array<{ id: string | null; name: string; amount: string; bonusPercent: string; description: string | null }>;
+        vatRatePercent: number;
+        minimumTopUp: number;
+        balanceValidityMonths: number | null;
+      }>("public/pricing", undefined, { auth: false });
+      if (d.plans.length) {
+        return {
+          plans: d.plans.map((p) => ({
+            id: p.id,
+            key: p.key,
+            name: p.name,
+            description: p.description,
+            minRechargeAmount: Number(p.minRechargeAmount),
+            transactionalNonMasking: Number(p.transactionalNonMasking),
+            transactionalMasking: Number(p.transactionalMasking),
+            promotionalNonMasking: Number(p.promotionalNonMasking),
+            promotionalMasking: Number(p.promotionalMasking),
+            senderIdFee: Number(p.senderIdFee),
+            features: jsonStringArray(p.features),
+            isCustom: p.isCustom,
+            isDefault: p.isDefault,
+            highlighted: p.highlighted,
+          })),
+          source: "database" as const,
+          packages: d.packages.length
+            ? d.packages.map((p) => ({ id: p.id, name: p.name, amount: Number(p.amount), bonusPercent: Number(p.bonusPercent), description: p.description }))
+            : defaultCreditPackages.map((p) => ({ ...p, id: null as string | null, description: null as string | null })),
+          policy: { vatRatePercent: d.vatRatePercent, minimumTopUp: d.minimumTopUp, balanceValidityMonths: d.balanceValidityMonths },
+        };
+      }
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.warn({ err: (err as Error).message }, "public pricing unavailable from the API, using config defaults");
+    }
+    return {
+      plans: defaultPlans.map((p) => ({ ...p, id: null })),
+      source: "defaults" as const,
+      packages: defaultCreditPackages.map((p) => ({ ...p, id: null as string | null, description: null as string | null })),
+      policy: { vatRatePercent: defaultBillingPolicy.vatRatePercent, minimumTopUp: defaultBillingPolicy.minimumTopUp, balanceValidityMonths: defaultBillingPolicy.balanceValidityMonths },
+    };
+  }
+  const [{ plans, source }, packages, policy] = await Promise.all([getPublicPlans(), getActivePackages(), getBillingPolicy()]);
+  return { plans, source, packages, policy: { vatRatePercent: policy.vatRatePercent, minimumTopUp: policy.minimumTopUp, balanceValidityMonths: policy.balanceValidityMonths } };
 }
 
 export async function getActivePackages() {

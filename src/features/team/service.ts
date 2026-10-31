@@ -9,6 +9,9 @@ import { hashPassword } from "@/lib/auth/password";
 import { sendEmail } from "@/services/email";
 import { emailTemplates } from "@/services/email/templates";
 import { notify } from "@/services/notify";
+import { laravel, isLaravelApiError } from "@/lib/laravel-api";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 
 const INVITE_DAYS = 7;
 const ROLE_KEYS = ["OWNER", "ADMIN", "MANAGER", "DEVELOPER", "VIEWER"] as const;
@@ -20,6 +23,7 @@ export const inviteSchema = z.object({
 
 export async function listTeam(ctx: TenantContext) {
   requirePermission(ctx, "team:read");
+  if (laravelEnabled("team")) return viaLaravel.listTeam();
   const [members, invitations, roles] = await Promise.all([
     db.organizationMember.findMany({
       where: { organizationId: ctx.organizationId },
@@ -43,6 +47,7 @@ function isOwner(ctx: TenantContext) {
 
 export async function inviteMember(ctx: TenantContext, input: z.infer<typeof inviteSchema>) {
   requirePermission(ctx, "team:manage");
+  if (laravelEnabled("team")) return viaLaravel.inviteMember(input);
   if (input.role === "OWNER" && !isOwner(ctx)) throw new AppError("FORBIDDEN", "Only owners can invite another owner.");
   const role = await db.role.findUniqueOrThrow({ where: { organizationId_key: { organizationId: ctx.organizationId, key: input.role } } });
   const existingMember = await db.organizationMember.findFirst({ where: { organizationId: ctx.organizationId, user: { email: input.email } } });
@@ -66,6 +71,7 @@ export async function inviteMember(ctx: TenantContext, input: z.infer<typeof inv
 
 export async function revokeInvitation(ctx: TenantContext, id: string) {
   requirePermission(ctx, "team:manage");
+  if (laravelEnabled("team")) return viaLaravel.revokeInvitation(id);
   const r = await db.invitation.updateMany({ where: { id, organizationId: ctx.organizationId, acceptedAt: null, revokedAt: null }, data: { revokedAt: new Date() } });
   if (!r.count) throw notFound("Invitation");
   await audit({ action: "team.invite_revoke", actor: actorOf(ctx), organizationId: ctx.organizationId, targetType: "invitation", targetId: id });
@@ -77,6 +83,7 @@ async function ownersCount(organizationId: string) {
 
 export async function changeMemberRole(ctx: TenantContext, memberId: string, roleKey: SystemRoleKey) {
   requirePermission(ctx, "team:manage");
+  if (laravelEnabled("team")) return viaLaravel.changeMemberRole(memberId, roleKey);
   const m = await db.organizationMember.findFirst({ where: { id: memberId, organizationId: ctx.organizationId }, include: { role: true } });
   if (!m) throw notFound("Member");
   if (m.userId === ctx.userId) throw new AppError("FORBIDDEN", "You can't change your own role.");
@@ -89,6 +96,7 @@ export async function changeMemberRole(ctx: TenantContext, memberId: string, rol
 
 export async function setMemberStatus(ctx: TenantContext, memberId: string, action: "remove" | "disable" | "enable") {
   requirePermission(ctx, "team:manage");
+  if (laravelEnabled("team")) return viaLaravel.setMemberStatus(memberId, action);
   const m = await db.organizationMember.findFirst({ where: { id: memberId, organizationId: ctx.organizationId }, include: { role: true } });
   if (!m) throw notFound("Member");
   if (m.userId === ctx.userId) throw new AppError("FORBIDDEN", "You can't remove or disable yourself.");
@@ -101,6 +109,7 @@ export async function setMemberStatus(ctx: TenantContext, memberId: string, acti
 
 export async function updateRolePermissions(ctx: TenantContext, roleKey: SystemRoleKey, permissions: string[]) {
   requirePermission(ctx, "team:manage");
+  if (laravelEnabled("team")) return viaLaravel.updateRolePermissions(roleKey, permissions);
   if (roleKey === "OWNER") throw new AppError("FORBIDDEN", "The owner role always has every permission.");
   if (roleKey === "ADMIN" && !isOwner(ctx)) throw new AppError("FORBIDDEN", "Only owners can change the admin role.");
   const valid = permissions.filter((p) => (ALL_PERMISSIONS as string[]).includes(p));
@@ -111,6 +120,13 @@ export async function updateRolePermissions(ctx: TenantContext, roleKey: SystemR
 }
 
 // ─── Accepting invitations ───
+
+/** Invitation details for the public invite page (Laravel when the auth feature is switched). */
+export async function findInvitationForPage(token: string) {
+  if (laravelEnabled("auth")) return findInvitationViaLaravel(token);
+  const inv = await findInvitation(token);
+  return inv ? { email: inv.email, organization: { id: inv.organization.id, name: inv.organization.name }, role: { name: inv.role.name }, expiresAt: inv.expiresAt } : null;
+}
 
 export async function findInvitation(token: string) {
   const inv = await db.invitation.findUnique({ where: { tokenHash: sha256(token) }, include: { organization: { select: { id: true, name: true, deletedAt: true } }, role: { select: { name: true } } } });
@@ -155,4 +171,19 @@ export async function createUserForInvitation(token: string, input: { name: stri
   const user = await db.user.create({ data: { email: inv.email, name: input.name, phone: input.phone, passwordHash: await hashPassword(input.password), emailVerifiedAt: new Date() } });
   await audit({ action: "auth.register", actor: { type: "USER", userId: user.id }, organizationId: inv.organizationId, metadata: { via: "invitation" } });
   return user;
+}
+
+/** Public invitation details from Laravel, in the shape the invite page renders. Invalid/expired → null. */
+async function findInvitationViaLaravel(token: string) {
+  try {
+    const { data } = await laravel.get<{ email: string; organization: { id: string; name: string }; role: string; expiresAt: string }>(
+      `auth/invitations/${encodeURIComponent(token)}`,
+      undefined,
+      { auth: false },
+    );
+    return { email: data.email, organization: { id: data.organization.id, name: data.organization.name }, role: { name: data.role }, expiresAt: new Date(data.expiresAt) };
+  } catch (err) {
+    if (isLaravelApiError(err) && (err.kind === "not_found" || err.kind === "validation")) return null;
+    throw err;
+  }
 }

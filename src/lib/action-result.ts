@@ -1,5 +1,7 @@
 import { ZodError } from "zod";
 import { isAppError } from "@/lib/errors";
+import { isDatabaseUnavailable } from "@/lib/db-errors";
+import { isLaravelApiError } from "@/lib/laravel/errors";
 import { logger } from "@/lib/logger";
 
 /**
@@ -38,6 +40,18 @@ function actionErrorInner(err: unknown): ActionResult<never> {
     }
     return { ok: false, error: "Please fix the highlighted fields.", fieldErrors };
   }
+  // Laravel API (features switched by LARAVEL_FEATURES): its 4xx messages are written for end users
+  // and its validation contract details.fields[{path,message}] maps 1:1 onto fieldErrors.
+  if (isLaravelApiError(err)) {
+    if (err.status >= 500) logger.error({ status: err.status, code: err.code, requestId: err.requestId }, "server action failed (laravel)");
+    const fieldErrors = err.fieldErrors;
+    return {
+      ok: false,
+      error: err.kind === "validation" && err.details?.fields ? "Please fix the highlighted fields." : err.userMessage,
+      ...(err.code ? { code: err.code } : {}),
+      ...(fieldErrors ? { fieldErrors } : {}),
+    };
+  }
   if (isAppError(err)) {
     const field = typeof err.details?.field === "string" ? err.details.field : undefined;
     return { ok: false, error: err.message, code: err.code, ...(field ? { fieldErrors: { [field]: [err.message] } } : {}) };
@@ -45,6 +59,7 @@ function actionErrorInner(err: unknown): ActionResult<never> {
   // Next.js uses thrown errors for redirect()/notFound(); let those propagate.
   if (err && typeof err === "object" && "digest" in err && String((err as { digest: unknown }).digest).startsWith("NEXT_")) throw err;
   logger.error({ err }, "server action failed");
+  if (isDatabaseUnavailable(err)) return { ok: false, error: "The service is temporarily unavailable. Please try again shortly." };
   return { ok: false, error: "Something went wrong. Please try again." };
 }
 

@@ -9,6 +9,7 @@ import { formatBDT, formatDateTime } from "@/lib/format";
 import { formatBdPhone } from "@/lib/phone";
 import { getT } from "@/i18n/server";
 import { getMessage } from "@/features/reports/messages";
+import { laravelPage } from "@/lib/laravel-api";
 
 export const metadata = { title: "Message details" };
 
@@ -21,7 +22,7 @@ export default async function MessagePage({ params }: PageProps<"/dashboard/repo
   const { t } = await getT();
   let m;
   try {
-    m = await getMessage(ctx, id);
+    m = await laravelPage(() => getMessage(ctx, id));
   } catch (err) {
     if (isAppError(err) && err.code === "NOT_FOUND") notFound();
     throw err;

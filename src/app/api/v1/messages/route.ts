@@ -1,6 +1,7 @@
 import type { Prisma } from "@/generated/prisma/client";
 import type { MessageStatus } from "@/generated/prisma/enums";
 import { apiHandler } from "@/lib/api/handler";
+import { proxyRoute } from "@/lib/laravel/route";
 import { db } from "@/lib/db";
 import { AppError } from "@/lib/errors";
 import { normalizeBdPhone } from "@/lib/phone";
@@ -20,7 +21,7 @@ function decodeCursor(c: string) {
 }
 
 /** GET /api/v1/messages: newest first, cursor-paginated. */
-export const GET = apiHandler({ auth: "apiKey", scopes: ["messages:read"], query: listMessagesQuery }, async ({ query, ctx }) => {
+const prismaGET = apiHandler({ auth: "apiKey", scopes: ["messages:read"], query: listMessagesQuery }, async ({ query, ctx }) => {
   const where: Prisma.MessageWhereInput = { organizationId: ctx!.organizationId };
   if (query.status) where.status = query.status.toUpperCase() as MessageStatus;
   if (query.to) where.to = normalizeBdPhone(query.to) ?? query.to;
@@ -39,3 +40,6 @@ export const GET = apiHandler({ auth: "apiKey", scopes: ["messages:read"], query
     meta: { hasMore, nextCursor: hasMore && last ? Buffer.from(`${last.createdAt.toISOString()}|${last.id}`).toString("base64url") : null },
   };
 });
+
+/** LARAVEL_FEATURES `publicApi`: the same request (API key, body, Idempotency-Key) is answered by Laravel. */
+export const GET = proxyRoute("publicApi", () => "messages", prismaGET);

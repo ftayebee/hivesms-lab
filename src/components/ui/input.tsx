@@ -34,7 +34,7 @@ NativeSelect.displayName = "NativeSelect";
 /** Accessible date/time picker using the native control (keyboard + screen-reader friendly). */
 export const DatePicker = forwardRef<HTMLInputElement, Omit<React.InputHTMLAttributes<HTMLInputElement>, "type"> & { withTime?: boolean }>(
   ({ className, withTime = true, ...props }, ref) => (
-    <input ref={ref} type={withTime ? "datetime-local" : "date"} className={cn(fieldBase, "h-9 py-1 [color-scheme:light] dark:[color-scheme:dark]", className)} {...props} />
+    <input ref={ref} type={withTime ? "datetime-local" : "date"} className={cn(fieldBase, "h-9 py-1 [color-scheme:light]", className)} {...props} />
   ),
 );
 DatePicker.displayName = "DatePicker";

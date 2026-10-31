@@ -6,9 +6,10 @@ import { z } from "zod";
 import { formToObject, type ActionResult } from "@/lib/action-result";
 import { tenantAction } from "@/lib/tenant-action";
 import { AppError } from "@/lib/errors";
-import { db } from "@/lib/db";
 import { completePayment, failPayment } from "@/services/billing/payments";
 import { cancelPendingPayment, createTopUp, getOwnPayment, previewTopUp, submitManualReference, topUpSchema, updateLowBalanceThreshold } from "./service";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import * as viaLaravel from "./laravel";
 
 export interface TopUpPreview {
   subtotal: string;
@@ -99,6 +100,11 @@ export async function updateThresholdAction(_prev: unknown, formData: FormData):
 export async function mockCheckoutAction(paymentId: string, outcome: "success" | "fail" | "cancel") {
   if (process.env.NODE_ENV === "production" && process.env.ALLOW_MOCK_PAYMENTS !== "true") throw new AppError("FORBIDDEN", "Mock payments are disabled.");
   const r = await tenantAction("billing:manage", async (ctx) => {
+    if (laravelEnabled("payments")) {
+      // Laravel refuses unless mock payments are allowed there and the payment is this tenant's mock payment.
+      await viaLaravel.mockComplete(z.uuid().parse(paymentId), outcome);
+      return;
+    }
     const p = await getOwnPayment(ctx, z.uuid().parse(paymentId));
     if (p.provider !== "mock") throw new AppError("FORBIDDEN", "Not a test payment.");
     if (outcome === "success") {
@@ -108,6 +114,5 @@ export async function mockCheckoutAction(paymentId: string, outcome: "success" |
     }
   });
   if (!r.ok) throw new AppError("INVALID_REQUEST", r.error);
-  const p = await db.payment.findUnique({ where: { id: paymentId }, select: { id: true } });
-  redirect(`/dashboard/wallet/payments/${p!.id}`);
+  redirect(`/dashboard/wallet/payments/${z.uuid().parse(paymentId)}`);
 }

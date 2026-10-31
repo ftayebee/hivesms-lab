@@ -12,13 +12,13 @@ import { DateRangeFilter } from "@/components/dashboard/date-range-filter";
 import { EmptyState, PageHeader, PermissionDenied } from "@/components/shared/states";
 import { tenantWithPermission } from "@/lib/auth/session";
 import { can } from "@/lib/auth/context";
-import { db } from "@/lib/db";
 import { formatBDT, formatDateTime, formatNumber, formatPercent } from "@/lib/format";
 import { formatBdPhone } from "@/lib/phone";
 import { getT } from "@/i18n/server";
 import { parseRange } from "@/features/reports/range";
-import { getDailySeries, getFailureReasons, getOperatorBreakdown, getStatusTotals } from "@/features/reports/queries";
-import { listMessages, REPORT_PAGE_SIZE, reportFiltersSchema, toMessageFilters } from "@/features/reports/messages";
+import { REPORT_PAGE_SIZE, reportFiltersSchema } from "@/features/reports/messages";
+import { loadReportsPage } from "@/features/reports/page-data";
+import { laravelPage } from "@/lib/laravel-api";
 
 export const metadata = { title: "Reports" };
 
@@ -29,18 +29,9 @@ export default async function ReportsPage({ searchParams }: PageProps<"/dashboar
   const { t } = await getT();
   const range = parseRange(sp);
   const rawFilters = reportFiltersSchema.parse(sp);
-  const filters = toMessageFilters(rawFilters);
   const page = parsePage(sp.page);
 
-  const [totals, daily, operators, failures, messages, campaigns, senders] = await Promise.all([
-    getStatusTotals(ctx, range, filters),
-    getDailySeries(ctx, range, filters),
-    getOperatorBreakdown(ctx, range, filters),
-    getFailureReasons(ctx, range, filters),
-    listMessages(ctx, range, filters, page),
-    db.campaign.findMany({ where: { organizationId: ctx.organizationId, deletedAt: null, startedAt: { not: null } }, orderBy: { startedAt: "desc" }, take: 100, select: { id: true, name: true } }),
-    db.message.findMany({ where: { organizationId: ctx.organizationId }, distinct: ["senderValue"], select: { senderValue: true }, take: 50 }),
-  ]);
+  const { totals, daily, operators, failures, messages, campaigns, senders } = await laravelPage(() => loadReportsPage(ctx, range, rawFilters, page));
   const statusLabel = (s: string) => t.status[s as keyof typeof t.status] ?? s;
   const qs = new URLSearchParams(Object.entries(sp).filter(([k, v]) => typeof v === "string" && k !== "page") as [string, string][]).toString();
 

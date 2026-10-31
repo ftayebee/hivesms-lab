@@ -31,8 +31,11 @@ async function findVerifyLink(to: string): Promise<string> {
 }
 
 test.describe.configure({ mode: "serial" });
+// This journey reads the Node dev mailbox; the Laravel-mode journey is laravel-cutover.spec.ts.
+const laravelRun = Boolean(process.env.E2E_LARAVEL);
 
 test("customer journey: register to delivered campaign and API key", async ({ page }) => {
+  test.skip(laravelRun, "Prisma-mode journey; see laravel-cutover.spec.ts");
   await test.step("register", async () => {
     await page.goto("/register");
     await page.locator('input[name="name"]').fill("E2E Tester");

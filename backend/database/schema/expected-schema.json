@@ -1,0 +1,979 @@
+{
+    "tables": {
+        "abuse_reports": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "reporterName": "varchar(255) NULL",
+                "reporterEmail": "varchar(254) NULL",
+                "reporterPhone": "varchar(191) NULL",
+                "senderValue": "varchar(191) NOT NULL",
+                "messageContent": "text NOT NULL",
+                "receivedAt": "datetime(3) NULL",
+                "description": "text NULL",
+                "status": "enum('new','investigating','actioned','dismissed') NOT NULL",
+                "organizationId": "char(36) NULL",
+                "resolutionNote": "text NULL",
+                "handledById": "char(36) NULL",
+                "ipAddress": "varchar(191) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "abuse_reports_status_createdAt_idx": "INDEX(status,createdAt)"
+            },
+            "fks": []
+        },
+        "api_keys": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "name": "varchar(255) NOT NULL",
+                "prefix": "varchar(191) NOT NULL",
+                "keyHash": "varchar(191) NOT NULL",
+                "scopes": "longtext NOT NULL",
+                "ipAllowlist": "longtext NOT NULL",
+                "status": "enum('active','revoked') NOT NULL",
+                "lastUsedAt": "datetime(3) NULL",
+                "lastUsedIp": "varchar(191) NULL",
+                "expiresAt": "datetime(3) NULL",
+                "createdById": "char(36) NULL",
+                "revokedAt": "datetime(3) NULL",
+                "revokedById": "char(36) NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "api_keys_keyHash_key": "UNIQUE(keyHash)",
+                "api_keys_organizationId_idx": "INDEX(organizationId)",
+                "api_keys_prefix_key": "UNIQUE(prefix)"
+            },
+            "fks": {
+                "api_keys_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "api_logs": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NULL",
+                "apiKeyId": "char(36) NULL",
+                "requestId": "varchar(191) NOT NULL",
+                "method": "varchar(191) NOT NULL",
+                "path": "text NOT NULL",
+                "statusCode": "int NOT NULL",
+                "durationMs": "int NOT NULL",
+                "errorCode": "varchar(191) NULL",
+                "ipAddress": "varchar(191) NULL",
+                "userAgent": "text NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "api_logs_apiKeyId_fkey": "INDEX(apiKeyId)",
+                "api_logs_createdAt_idx": "INDEX(createdAt)",
+                "api_logs_organizationId_createdAt_idx": "INDEX(organizationId,createdAt)"
+            },
+            "fks": {
+                "api_logs_apiKeyId_fkey": "apiKeyId -> api_keys(id) ON DELETE SET NULL ON UPDATE CASCADE",
+                "api_logs_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "audit_logs": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NULL",
+                "actorType": "enum('user','api_key','system','admin') NOT NULL",
+                "actorUserId": "char(36) NULL",
+                "actorApiKeyId": "char(36) NULL",
+                "action": "varchar(191) NOT NULL",
+                "targetType": "varchar(191) NULL",
+                "targetId": "varchar(255) NULL",
+                "ipAddress": "varchar(191) NULL",
+                "userAgent": "text NULL",
+                "metadata": "longtext NOT NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "audit_logs_action_createdAt_idx": "INDEX(action,createdAt)",
+                "audit_logs_actorUserId_fkey": "INDEX(actorUserId)",
+                "audit_logs_createdAt_idx": "INDEX(createdAt)",
+                "audit_logs_organizationId_createdAt_idx": "INDEX(organizationId,createdAt)"
+            },
+            "fks": {
+                "audit_logs_actorUserId_fkey": "actorUserId -> users(id) ON DELETE SET NULL ON UPDATE CASCADE",
+                "audit_logs_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "blocklist_entries": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "type": "enum('number','keyword','url_domain') NOT NULL",
+                "value": "varchar(191) NOT NULL",
+                "reason": "text NULL",
+                "createdById": "char(36) NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "blocklist_entries_type_value_key": "UNIQUE(type,value)"
+            },
+            "fks": []
+        },
+        "campaigns": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "name": "varchar(255) NOT NULL",
+                "smsType": "enum('transactional','promotional') NOT NULL",
+                "senderIdId": "char(36) NULL",
+                "senderValue": "varchar(191) NOT NULL",
+                "senderType": "enum('masking','non_masking') NOT NULL",
+                "templateId": "char(36) NULL",
+                "message": "text NOT NULL",
+                "encoding": "enum('gsm7','ucs2') NOT NULL",
+                "segmentsPerMessage": "int NOT NULL",
+                "status": "enum('draft','pending_review','scheduled','processing','completed','paused','cancelled','failed') NOT NULL",
+                "audience": "longtext NOT NULL",
+                "scheduledAt": "datetime(3) NULL",
+                "startedAt": "datetime(3) NULL",
+                "completedAt": "datetime(3) NULL",
+                "pausedAt": "datetime(3) NULL",
+                "cancelledAt": "datetime(3) NULL",
+                "recipientCount": "int NOT NULL",
+                "skippedCount": "int NOT NULL",
+                "queuedCount": "int NOT NULL",
+                "submittedCount": "int NOT NULL",
+                "deliveredCount": "int NOT NULL",
+                "failedCount": "int NOT NULL",
+                "estimatedCost": "decimal(14,4) NOT NULL",
+                "actualCost": "decimal(14,4) NOT NULL",
+                "refundedAmount": "decimal(14,4) NOT NULL",
+                "failureReason": "text NULL",
+                "reviewNote": "text NULL",
+                "reviewedById": "char(36) NULL",
+                "reviewedAt": "datetime(3) NULL",
+                "createdById": "char(36) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL",
+                "deletedAt": "datetime(3) NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "campaigns_organizationId_createdAt_idx": "INDEX(organizationId,createdAt)",
+                "campaigns_senderIdId_fkey": "INDEX(senderIdId)",
+                "campaigns_status_scheduledAt_idx": "INDEX(status,scheduledAt)",
+                "campaigns_templateId_fkey": "INDEX(templateId)"
+            },
+            "fks": {
+                "campaigns_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE",
+                "campaigns_senderIdId_fkey": "senderIdId -> sender_ids(id) ON DELETE SET NULL ON UPDATE CASCADE",
+                "campaigns_templateId_fkey": "templateId -> templates(id) ON DELETE SET NULL ON UPDATE CASCADE"
+            }
+        },
+        "campaign_recipients": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "campaignId": "char(36) NOT NULL",
+                "contactId": "char(36) NULL",
+                "phone": "varchar(191) NOT NULL",
+                "variables": "longtext NULL",
+                "status": "enum('included','skipped_suppressed','skipped_invalid','skipped_duplicate','skipped_blocked') NOT NULL",
+                "messageId": "char(36) NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "campaign_recipients_campaignId_phone_key": "UNIQUE(campaignId,phone)",
+                "campaign_recipients_campaignId_status_idx": "INDEX(campaignId,status)",
+                "campaign_recipients_messageId_key": "UNIQUE(messageId)"
+            },
+            "fks": {
+                "campaign_recipients_campaignId_fkey": "campaignId -> campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "contacts": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "name": "varchar(255) NULL",
+                "phone": "varchar(191) NOT NULL",
+                "email": "varchar(254) NULL",
+                "company": "varchar(255) NULL",
+                "tags": "longtext NOT NULL",
+                "customFields": "longtext NOT NULL",
+                "consentStatus": "enum('opted_in','unknown','opted_out') NOT NULL",
+                "consentSource": "varchar(255) NULL",
+                "consentAt": "datetime(3) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL",
+                "deletedAt": "datetime(3) NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "contacts_organizationId_consentStatus_idx": "INDEX(organizationId,consentStatus)",
+                "contacts_organizationId_createdAt_idx": "INDEX(organizationId,createdAt)",
+                "contacts_organizationId_phone_key": "UNIQUE(organizationId,phone)"
+            },
+            "fks": {
+                "contacts_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "contact_groups": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "name": "varchar(191) NOT NULL",
+                "description": "text NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL",
+                "deletedAt": "datetime(3) NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "contact_groups_organizationId_name_key": "UNIQUE(organizationId,name)"
+            },
+            "fks": {
+                "contact_groups_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "contact_group_members": {
+            "columns": {
+                "groupId": "char(36) NOT NULL",
+                "contactId": "char(36) NOT NULL",
+                "addedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(groupId,contactId)",
+                "contact_group_members_contactId_idx": "INDEX(contactId)"
+            },
+            "fks": {
+                "contact_group_members_contactId_fkey": "contactId -> contacts(id) ON DELETE CASCADE ON UPDATE CASCADE",
+                "contact_group_members_groupId_fkey": "groupId -> contact_groups(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "contact_requests": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "name": "varchar(255) NOT NULL",
+                "company": "varchar(255) NULL",
+                "email": "varchar(254) NOT NULL",
+                "phone": "varchar(191) NULL",
+                "subject": "varchar(255) NOT NULL",
+                "message": "text NOT NULL",
+                "status": "enum('new','contacted','closed') NOT NULL",
+                "ipAddress": "varchar(191) NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "contact_requests_status_createdAt_idx": "INDEX(status,createdAt)"
+            },
+            "fks": []
+        },
+        "counters": {
+            "columns": {
+                "name": "varchar(64) NOT NULL",
+                "value": "bigint NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(name)"
+            },
+            "fks": []
+        },
+        "credit_packages": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "name": "varchar(191) NOT NULL",
+                "amount": "decimal(14,4) NOT NULL",
+                "bonusPercent": "decimal(5,2) NOT NULL",
+                "description": "text NULL",
+                "active": "tinyint NOT NULL",
+                "sortOrder": "int NOT NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)"
+            },
+            "fks": []
+        },
+        "idempotency_keys": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "key": "varchar(255) NOT NULL",
+                "requestHash": "varchar(191) NOT NULL",
+                "statusCode": "int NULL",
+                "response": "longtext NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "expiresAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "idempotency_keys_expiresAt_idx": "INDEX(expiresAt)",
+                "idempotency_keys_organizationId_key_key": "UNIQUE(organizationId,key)"
+            },
+            "fks": {
+                "idempotency_keys_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "inbound_webhook_events": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "provider": "varchar(191) NOT NULL",
+                "kind": "varchar(191) NOT NULL",
+                "eventKey": "varchar(512) NOT NULL",
+                "signatureValid": "tinyint NULL",
+                "payload": "longtext NOT NULL",
+                "status": "enum('received','processed','ignored','failed') NOT NULL",
+                "error": "text NULL",
+                "receivedAt": "datetime(3) NOT NULL",
+                "processedAt": "datetime(3) NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "inbound_webhook_events_eventKey_key": "UNIQUE(eventKey)",
+                "inbound_webhook_events_provider_receivedAt_idx": "INDEX(provider,receivedAt)"
+            },
+            "fks": []
+        },
+        "invitations": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "email": "varchar(254) NOT NULL",
+                "roleId": "char(36) NOT NULL",
+                "tokenHash": "varchar(191) NOT NULL",
+                "invitedById": "char(36) NOT NULL",
+                "expiresAt": "datetime(3) NOT NULL",
+                "acceptedAt": "datetime(3) NULL",
+                "revokedAt": "datetime(3) NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "invitations_organizationId_email_idx": "INDEX(organizationId,email)",
+                "invitations_roleId_fkey": "INDEX(roleId)",
+                "invitations_tokenHash_key": "UNIQUE(tokenHash)"
+            },
+            "fks": {
+                "invitations_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE",
+                "invitations_roleId_fkey": "roleId -> roles(id) ON DELETE RESTRICT ON UPDATE CASCADE"
+            }
+        },
+        "invoices": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "paymentId": "char(36) NOT NULL",
+                "number": "varchar(191) NOT NULL",
+                "subtotal": "decimal(14,4) NOT NULL",
+                "vatRate": "decimal(5,2) NOT NULL",
+                "vatAmount": "decimal(14,4) NOT NULL",
+                "total": "decimal(14,4) NOT NULL",
+                "currency": "varchar(191) NOT NULL",
+                "status": "enum('issued','paid','void') NOT NULL",
+                "billingName": "varchar(255) NOT NULL",
+                "billingEmail": "varchar(254) NULL",
+                "billingAddress": "text NULL",
+                "taxId": "varchar(191) NULL",
+                "lineItems": "longtext NOT NULL",
+                "issuedAt": "datetime(3) NOT NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "invoices_number_key": "UNIQUE(number)",
+                "invoices_organizationId_issuedAt_idx": "INDEX(organizationId,issuedAt)",
+                "invoices_paymentId_key": "UNIQUE(paymentId)"
+            },
+            "fks": {
+                "invoices_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE",
+                "invoices_paymentId_fkey": "paymentId -> payments(id) ON DELETE RESTRICT ON UPDATE CASCADE"
+            }
+        },
+        "messages": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "campaignId": "char(36) NULL",
+                "apiKeyId": "char(36) NULL",
+                "source": "enum('api','campaign','dashboard','system') NOT NULL",
+                "to": "varchar(191) NOT NULL",
+                "operator": "varchar(191) NULL",
+                "senderValue": "varchar(191) NOT NULL",
+                "senderType": "enum('masking','non_masking') NOT NULL",
+                "smsType": "enum('transactional','promotional') NOT NULL",
+                "body": "text NOT NULL",
+                "encoding": "enum('gsm7','ucs2') NOT NULL",
+                "segments": "int NOT NULL",
+                "unitPrice": "decimal(14,4) NOT NULL",
+                "cost": "decimal(14,4) NOT NULL",
+                "status": "enum('queued','submitted','delivered','failed','rejected','expired','cancelled') NOT NULL",
+                "provider": "varchar(191) NULL",
+                "providerMessageId": "varchar(255) NULL",
+                "errorCode": "varchar(255) NULL",
+                "errorMessage": "text NULL",
+                "clientReference": "varchar(255) NULL",
+                "attempts": "int NOT NULL",
+                "nextAttemptAt": "datetime(3) NULL",
+                "lockedUntil": "datetime(3) NULL",
+                "queuedAt": "datetime(3) NOT NULL",
+                "submittedAt": "datetime(3) NULL",
+                "deliveredAt": "datetime(3) NULL",
+                "failedAt": "datetime(3) NULL",
+                "refundedAt": "datetime(3) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "messages_apiKeyId_fkey": "INDEX(apiKeyId)",
+                "messages_campaignId_status_idx": "INDEX(campaignId,status)",
+                "messages_organizationId_createdAt_idx": "INDEX(organizationId,createdAt)",
+                "messages_organizationId_status_idx": "INDEX(organizationId,status)",
+                "messages_provider_providerMessageId_key": "UNIQUE(provider,providerMessageId)",
+                "messages_status_nextAttemptAt_idx": "INDEX(status,nextAttemptAt)",
+                "messages_to_idx": "INDEX(to)"
+            },
+            "fks": {
+                "messages_apiKeyId_fkey": "apiKeyId -> api_keys(id) ON DELETE SET NULL ON UPDATE CASCADE",
+                "messages_campaignId_fkey": "campaignId -> campaigns(id) ON DELETE SET NULL ON UPDATE CASCADE",
+                "messages_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "message_events": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "messageId": "char(36) NOT NULL",
+                "status": "enum('queued','submitted','delivered','failed','rejected','expired','cancelled') NOT NULL",
+                "providerStatus": "varchar(255) NULL",
+                "description": "text NULL",
+                "source": "enum('system','provider_webhook','provider_poll','provider_response') NOT NULL",
+                "dedupeKey": "varchar(512) NOT NULL",
+                "payload": "longtext NULL",
+                "occurredAt": "datetime(3) NOT NULL",
+                "receivedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "message_events_dedupeKey_key": "UNIQUE(dedupeKey)",
+                "message_events_messageId_occurredAt_idx": "INDEX(messageId,occurredAt)"
+            },
+            "fks": {
+                "message_events_messageId_fkey": "messageId -> messages(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "notifications": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NULL",
+                "userId": "char(36) NOT NULL",
+                "type": "varchar(191) NOT NULL",
+                "title": "varchar(255) NOT NULL",
+                "body": "text NOT NULL",
+                "link": "varchar(500) NULL",
+                "readAt": "datetime(3) NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "notifications_organizationId_fkey": "INDEX(organizationId)",
+                "notifications_userId_readAt_createdAt_idx": "INDEX(userId,readAt,createdAt)"
+            },
+            "fks": {
+                "notifications_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE",
+                "notifications_userId_fkey": "userId -> users(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "notification_preferences": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "userId": "char(36) NOT NULL",
+                "type": "varchar(191) NOT NULL",
+                "inApp": "tinyint NOT NULL",
+                "email": "tinyint NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "notification_preferences_userId_type_key": "UNIQUE(userId,type)"
+            },
+            "fks": {
+                "notification_preferences_userId_fkey": "userId -> users(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "organizations": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "name": "varchar(255) NOT NULL",
+                "slug": "varchar(191) NOT NULL",
+                "status": "enum('active','suspended') NOT NULL",
+                "suspendedReason": "text NULL",
+                "industry": "varchar(191) NULL",
+                "website": "varchar(500) NULL",
+                "address": "text NULL",
+                "billingEmail": "varchar(254) NULL",
+                "taxId": "varchar(191) NULL",
+                "country": "varchar(191) NOT NULL",
+                "timezone": "varchar(191) NOT NULL",
+                "pricingPlanId": "char(36) NULL",
+                "dailySendLimit": "int NOT NULL",
+                "monthlySendLimit": "int NOT NULL",
+                "requireCampaignReview": "tinyint NOT NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL",
+                "deletedAt": "datetime(3) NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "organizations_pricingPlanId_fkey": "INDEX(pricingPlanId)",
+                "organizations_slug_key": "UNIQUE(slug)",
+                "organizations_status_idx": "INDEX(status)"
+            },
+            "fks": {
+                "organizations_pricingPlanId_fkey": "pricingPlanId -> pricing_plans(id) ON DELETE SET NULL ON UPDATE CASCADE"
+            }
+        },
+        "organization_members": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "userId": "char(36) NOT NULL",
+                "roleId": "char(36) NOT NULL",
+                "status": "enum('active','disabled') NOT NULL",
+                "invitedById": "char(36) NULL",
+                "joinedAt": "datetime(3) NOT NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "organization_members_organizationId_userId_key": "UNIQUE(organizationId,userId)",
+                "organization_members_roleId_fkey": "INDEX(roleId)",
+                "organization_members_userId_idx": "INDEX(userId)"
+            },
+            "fks": {
+                "organization_members_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE",
+                "organization_members_roleId_fkey": "roleId -> roles(id) ON DELETE RESTRICT ON UPDATE CASCADE",
+                "organization_members_userId_fkey": "userId -> users(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "payments": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "provider": "varchar(191) NOT NULL",
+                "providerRef": "varchar(255) NULL",
+                "packageId": "char(36) NULL",
+                "amount": "decimal(14,4) NOT NULL",
+                "vatRate": "decimal(5,2) NOT NULL",
+                "vatAmount": "decimal(14,4) NOT NULL",
+                "total": "decimal(14,4) NOT NULL",
+                "creditAmount": "decimal(14,4) NOT NULL",
+                "currency": "varchar(191) NOT NULL",
+                "status": "enum('pending','awaiting_verification','succeeded','failed','cancelled','refunded') NOT NULL",
+                "method": "varchar(255) NULL",
+                "manualReference": "varchar(255) NULL",
+                "metadata": "longtext NOT NULL",
+                "failureReason": "text NULL",
+                "initiatedById": "char(36) NULL",
+                "reviewedById": "char(36) NULL",
+                "completedAt": "datetime(3) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "payments_organizationId_createdAt_idx": "INDEX(organizationId,createdAt)",
+                "payments_packageId_fkey": "INDEX(packageId)",
+                "payments_provider_providerRef_key": "UNIQUE(provider,providerRef)",
+                "payments_status_idx": "INDEX(status)"
+            },
+            "fks": {
+                "payments_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE",
+                "payments_packageId_fkey": "packageId -> credit_packages(id) ON DELETE SET NULL ON UPDATE CASCADE"
+            }
+        },
+        "permissions": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "key": "varchar(191) NOT NULL",
+                "group": "varchar(191) NOT NULL",
+                "description": "text NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "permissions_key_key": "UNIQUE(key)"
+            },
+            "fks": []
+        },
+        "pricing_plans": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "key": "varchar(191) NOT NULL",
+                "name": "varchar(191) NOT NULL",
+                "description": "text NULL",
+                "minRechargeAmount": "decimal(14,4) NOT NULL",
+                "transactionalNonMasking": "decimal(10,4) NOT NULL",
+                "transactionalMasking": "decimal(10,4) NOT NULL",
+                "promotionalNonMasking": "decimal(10,4) NOT NULL",
+                "promotionalMasking": "decimal(10,4) NOT NULL",
+                "senderIdFee": "decimal(14,4) NOT NULL",
+                "features": "longtext NOT NULL",
+                "isCustom": "tinyint NOT NULL",
+                "isPublic": "tinyint NOT NULL",
+                "isDefault": "tinyint NOT NULL",
+                "active": "tinyint NOT NULL",
+                "highlighted": "tinyint NOT NULL",
+                "sortOrder": "int NOT NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "pricing_plans_key_key": "UNIQUE(key)"
+            },
+            "fks": []
+        },
+        "rate_limit_buckets": {
+            "columns": {
+                "key": "varchar(191) NOT NULL",
+                "windowStart": "datetime(3) NOT NULL",
+                "count": "int NOT NULL",
+                "expiresAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(key,windowStart)",
+                "rate_limit_buckets_expiresAt_idx": "INDEX(expiresAt)"
+            },
+            "fks": []
+        },
+        "roles": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "key": "varchar(191) NOT NULL",
+                "name": "varchar(191) NOT NULL",
+                "description": "text NULL",
+                "isSystem": "tinyint NOT NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "roles_organizationId_key_key": "UNIQUE(organizationId,key)"
+            },
+            "fks": {
+                "roles_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "role_permissions": {
+            "columns": {
+                "roleId": "char(36) NOT NULL",
+                "permissionId": "char(36) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(roleId,permissionId)",
+                "role_permissions_permissionId_fkey": "INDEX(permissionId)"
+            },
+            "fks": {
+                "role_permissions_permissionId_fkey": "permissionId -> permissions(id) ON DELETE CASCADE ON UPDATE CASCADE",
+                "role_permissions_roleId_fkey": "roleId -> roles(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "sender_ids": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "value": "varchar(191) NOT NULL",
+                "type": "enum('masking','non_masking') NOT NULL",
+                "status": "enum('pending','approved','rejected','suspended') NOT NULL",
+                "purpose": "text NULL",
+                "sampleMessage": "text NULL",
+                "documents": "longtext NOT NULL",
+                "rejectionReason": "text NULL",
+                "providerRef": "varchar(255) NULL",
+                "isDefault": "tinyint NOT NULL",
+                "submittedById": "char(36) NULL",
+                "reviewedById": "char(36) NULL",
+                "reviewedAt": "datetime(3) NULL",
+                "approvedAt": "datetime(3) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "sender_ids_organizationId_value_key": "UNIQUE(organizationId,value)",
+                "sender_ids_status_idx": "INDEX(status)"
+            },
+            "fks": {
+                "sender_ids_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "sessions": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "tokenHash": "varchar(191) NOT NULL",
+                "userId": "char(36) NOT NULL",
+                "activeOrganizationId": "char(36) NULL",
+                "ipAddress": "varchar(191) NULL",
+                "userAgent": "text NULL",
+                "expiresAt": "datetime(3) NOT NULL",
+                "lastSeenAt": "datetime(3) NOT NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "sessions_expiresAt_idx": "INDEX(expiresAt)",
+                "sessions_tokenHash_key": "UNIQUE(tokenHash)",
+                "sessions_userId_idx": "INDEX(userId)"
+            },
+            "fks": {
+                "sessions_userId_fkey": "userId -> users(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "settings": {
+            "columns": {
+                "key": "varchar(191) NOT NULL",
+                "value": "longtext NOT NULL",
+                "isSecret": "tinyint NOT NULL",
+                "updatedById": "char(36) NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(key)"
+            },
+            "fks": []
+        },
+        "support_messages": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "ticketId": "char(36) NOT NULL",
+                "authorId": "char(36) NOT NULL",
+                "body": "text NOT NULL",
+                "isStaff": "tinyint NOT NULL",
+                "isInternal": "tinyint NOT NULL",
+                "attachments": "longtext NOT NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "support_messages_authorId_fkey": "INDEX(authorId)",
+                "support_messages_ticketId_createdAt_idx": "INDEX(ticketId,createdAt)"
+            },
+            "fks": {
+                "support_messages_authorId_fkey": "authorId -> users(id) ON DELETE RESTRICT ON UPDATE CASCADE",
+                "support_messages_ticketId_fkey": "ticketId -> support_tickets(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "support_tickets": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "number": "int NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "subject": "varchar(255) NOT NULL",
+                "category": "varchar(191) NOT NULL",
+                "priority": "enum('low','normal','high','urgent') NOT NULL",
+                "status": "enum('open','in_progress','waiting_for_customer','resolved','closed') NOT NULL",
+                "createdById": "char(36) NOT NULL",
+                "assignedToId": "char(36) NULL",
+                "lastReplyAt": "datetime(3) NOT NULL",
+                "closedAt": "datetime(3) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "support_tickets_assignedToId_fkey": "INDEX(assignedToId)",
+                "support_tickets_createdById_fkey": "INDEX(createdById)",
+                "support_tickets_number_key": "UNIQUE(number)",
+                "support_tickets_organizationId_status_idx": "INDEX(organizationId,status)",
+                "support_tickets_status_lastReplyAt_idx": "INDEX(status,lastReplyAt)"
+            },
+            "fks": {
+                "support_tickets_assignedToId_fkey": "assignedToId -> users(id) ON DELETE SET NULL ON UPDATE CASCADE",
+                "support_tickets_createdById_fkey": "createdById -> users(id) ON DELETE RESTRICT ON UPDATE CASCADE",
+                "support_tickets_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "suppression_entries": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "phone": "varchar(191) NOT NULL",
+                "reason": "enum('opt_out','manual','complaint','invalid') NOT NULL",
+                "source": "varchar(191) NULL",
+                "note": "text NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "suppression_entries_organizationId_phone_key": "UNIQUE(organizationId,phone)"
+            },
+            "fks": {
+                "suppression_entries_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "templates": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "name": "varchar(255) NOT NULL",
+                "body": "text NOT NULL",
+                "smsType": "enum('transactional','promotional') NOT NULL",
+                "createdById": "char(36) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL",
+                "deletedAt": "datetime(3) NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "templates_organizationId_name_idx": "INDEX(organizationId,name)"
+            },
+            "fks": {
+                "templates_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "users": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "email": "varchar(254) NOT NULL",
+                "phone": "varchar(191) NULL",
+                "name": "varchar(255) NOT NULL",
+                "passwordHash": "varchar(191) NOT NULL",
+                "platformRole": "enum('user','support','admin','super_admin') NOT NULL",
+                "status": "enum('active','suspended') NOT NULL",
+                "locale": "varchar(191) NOT NULL",
+                "emailVerifiedAt": "datetime(3) NULL",
+                "phoneVerifiedAt": "datetime(3) NULL",
+                "failedLoginCount": "int NOT NULL",
+                "lockedUntil": "datetime(3) NULL",
+                "lastLoginAt": "datetime(3) NULL",
+                "passwordChangedAt": "datetime(3) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL",
+                "deletedAt": "datetime(3) NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "users_email_key": "UNIQUE(email)",
+                "users_phone_key": "UNIQUE(phone)",
+                "users_platformRole_idx": "INDEX(platformRole)"
+            },
+            "fks": []
+        },
+        "verification_tokens": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "userId": "char(36) NOT NULL",
+                "type": "enum('email_verify','password_reset','phone_otp') NOT NULL",
+                "tokenHash": "varchar(191) NOT NULL",
+                "target": "varchar(254) NULL",
+                "attempts": "int NOT NULL",
+                "expiresAt": "datetime(3) NOT NULL",
+                "consumedAt": "datetime(3) NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "verification_tokens_tokenHash_key": "UNIQUE(tokenHash)",
+                "verification_tokens_userId_type_idx": "INDEX(userId,type)"
+            },
+            "fks": {
+                "verification_tokens_userId_fkey": "userId -> users(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "wallets": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "balance": "decimal(14,4) NOT NULL",
+                "currency": "varchar(191) NOT NULL",
+                "lowBalanceThreshold": "decimal(14,4) NOT NULL",
+                "lowBalanceNotifiedAt": "datetime(3) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "wallets_organizationId_key": "UNIQUE(organizationId)"
+            },
+            "fks": {
+                "wallets_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "wallet_transactions": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "walletId": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "type": "enum('credit','debit') NOT NULL",
+                "reason": "enum('topup','bonus','sms_charge','refund','adjustment','sender_id_fee') NOT NULL",
+                "amount": "decimal(14,4) NOT NULL",
+                "balanceAfter": "decimal(14,4) NOT NULL",
+                "description": "text NOT NULL",
+                "referenceType": "varchar(191) NULL",
+                "referenceId": "varchar(255) NULL",
+                "createdById": "char(36) NULL",
+                "createdAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "wallet_transactions_organizationId_createdAt_idx": "INDEX(organizationId,createdAt)",
+                "wallet_transactions_reason_referenceType_referenceId_key": "UNIQUE(reason,referenceType,referenceId)",
+                "wallet_transactions_walletId_fkey": "INDEX(walletId)"
+            },
+            "fks": {
+                "wallet_transactions_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE",
+                "wallet_transactions_walletId_fkey": "walletId -> wallets(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "webhooks": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "url": "text NOT NULL",
+                "description": "text NULL",
+                "secretEncrypted": "text NOT NULL",
+                "events": "longtext NOT NULL",
+                "active": "tinyint NOT NULL",
+                "failureCount": "int NOT NULL",
+                "lastDeliveryAt": "datetime(3) NULL",
+                "lastStatusCode": "int NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "webhooks_organizationId_idx": "INDEX(organizationId)"
+            },
+            "fks": {
+                "webhooks_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        },
+        "webhook_deliveries": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "endpointId": "char(36) NOT NULL",
+                "event": "varchar(191) NOT NULL",
+                "payload": "longtext NOT NULL",
+                "status": "enum('pending','succeeded','failed') NOT NULL",
+                "attempts": "int NOT NULL",
+                "responseStatus": "int NULL",
+                "responseBody": "text NULL",
+                "nextAttemptAt": "datetime(3) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "webhook_deliveries_endpointId_createdAt_idx": "INDEX(endpointId,createdAt)",
+                "webhook_deliveries_status_nextAttemptAt_idx": "INDEX(status,nextAttemptAt)"
+            },
+            "fks": {
+                "webhook_deliveries_endpointId_fkey": "endpointId -> webhooks(id) ON DELETE CASCADE ON UPDATE CASCADE"
+            }
+        }
+    }
+}

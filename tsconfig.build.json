@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "exclude": [
+    "node_modules",
+    ".local",
+    ".agents",
+    "playwright-report",
+    "test-results",
+    "tests",
+    "vitest.config.mts",
+    "playwright.config.ts",
+    "backend"
+  ]
+}

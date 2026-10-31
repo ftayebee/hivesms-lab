@@ -5,6 +5,9 @@ import { logger } from "@/lib/logger";
 import { defaultSmsPolicy, type SmsPolicy } from "@/config/sms";
 import { defaultBillingPolicy, type BillingPolicy } from "@/config/pricing";
 import { siteConfig } from "@/config/site";
+import { unstable_rethrow } from "next/navigation";
+import { laravelData } from "@/lib/laravel-api";
+import { laravelEnabled } from "@/lib/laravel/flags";
 
 /**
  * Runtime settings stored in the `settings` table, layered over code defaults and env vars.
@@ -139,8 +142,24 @@ export async function getPaymentSettings(): Promise<PaymentSettings> {
   };
 }
 
+/** Site content from Laravel's public endpoint (LARAVEL_FEATURES `public`), cached like readRaw. */
+async function siteContentFromLaravel(): Promise<Partial<SiteContentSettings> | undefined> {
+  const hit = cache.get("laravel:site.content");
+  if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value as Partial<SiteContentSettings> | undefined;
+  try {
+    const value = await laravelData<Partial<SiteContentSettings>>("public/site-content", undefined, { auth: false });
+    cache.set("laravel:site.content", { value, at: Date.now() });
+    return value;
+  } catch (err) {
+    unstable_rethrow(err);
+    // Public pages still render with the built-in contact details.
+    logger.warn({ err: (err as Error).message }, "site content unavailable from the API, using defaults");
+    return undefined;
+  }
+}
+
 export async function getSiteContent(): Promise<SiteContentSettings & { contactResolved: (typeof siteConfig)["contact"] }> {
-  const override = await readRaw<Partial<SiteContentSettings>>("site.content");
+  const override = laravelEnabled("public") ? await siteContentFromLaravel() : await readRaw<Partial<SiteContentSettings>>("site.content");
   const contact = override?.contact ?? {};
   return {
     contact,

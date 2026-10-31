@@ -8,6 +8,7 @@ import { formatBDT, formatDate } from "@/lib/format";
 import { siteConfig } from "@/config/site";
 import { getSiteContent } from "@/services/settings";
 import { getInvoice } from "@/features/wallet/service";
+import { laravelPage } from "@/lib/laravel-api";
 
 export const metadata = { title: "Invoice" };
 
@@ -24,7 +25,7 @@ export default async function InvoicePage({ params }: PageProps<"/dashboard/wall
   if (!allowed) return <PermissionDenied permission="billing:read" />;
   let inv;
   try {
-    inv = await getInvoice(ctx, id);
+    inv = await laravelPage(() => getInvoice(ctx, id));
   } catch (err) {
     if (isAppError(err) && err.code === "NOT_FOUND") notFound();
     throw err;

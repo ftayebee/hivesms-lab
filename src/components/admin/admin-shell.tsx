@@ -8,10 +8,13 @@ import {
   Activity,
   ArrowLeft,
   BadgeCheck,
+  Calculator,
   Building2,
   CreditCard,
   Flag,
   Gauge,
+  HeartPulse,
+  Landmark,
   LifeBuoy,
   LogOut,
   Megaphone,
@@ -26,7 +29,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
-import { ThemeToggle } from "@/components/shared/theme-toggle";
 import { SheetContent } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { platformCan, type PlatformPermission, type PlatformRoleKey } from "@/lib/auth/permissions";
@@ -42,14 +44,17 @@ const NAV: { href: string; label: string; icon: LucideIcon; perm: PlatformPermis
   { href: "/admin/sender-ids", label: "Sender IDs", icon: BadgeCheck, perm: "admin:sender_ids:review", badgeKey: "senders" },
   { href: "/admin/wallets", label: "Wallets", icon: Wallet, perm: "admin:billing:read" },
   { href: "/admin/payments", label: "Payments", icon: CreditCard, perm: "admin:billing:read", badgeKey: "payments" },
+  { href: "/admin/finance", label: "Finance", icon: Landmark, perm: "admin:finance:read" },
+  { href: "/admin/costs", label: "Costs & margins", icon: Calculator, perm: "admin:finance:read" },
   { href: "/admin/pricing", label: "Pricing", icon: Tags, perm: "admin:pricing:manage" },
   { href: "/admin/api-logs", label: "API logs", icon: Activity, perm: "admin:messages:read" },
   { href: "/admin/support", label: "Support", icon: LifeBuoy, perm: "admin:support", badgeKey: "tickets" },
   { href: "/admin/abuse", label: "Abuse & leads", icon: Flag, perm: "admin:abuse:manage", badgeKey: "abuse" },
-  { href: "/admin/users", label: "Users", icon: UserCog, perm: "admin:users:manage" },
+  { href: "/admin/users", label: "Users & staff", icon: UserCog, perm: "admin:users:manage" },
   { href: "/admin/roles", label: "Roles", icon: Shield, perm: "admin:access" },
   { href: "/admin/settings", label: "Settings", icon: Settings, perm: "admin:settings:manage" },
   { href: "/admin/audit-logs", label: "Audit logs", icon: ScrollText, perm: "admin:audit:read" },
+  { href: "/admin/system", label: "System health", icon: HeartPulse, perm: "admin:health:read" },
 ];
 
 export function AdminShell({ user, role, badges, children }: { user: { name: string; email: string }; role: PlatformRoleKey; badges: Record<string, number>; children: React.ReactNode }) {
@@ -111,7 +116,6 @@ export function AdminShell({ user, role, badges, children }: { user: { name: str
             Signed in as <span className="font-medium text-foreground">{user.name}</span> · {role.replace("_", " ").toLowerCase()}
           </p>
           <div className="ml-auto flex items-center gap-1">
-            <ThemeToggle />
             <button type="button" onClick={() => start(() => logoutAction())} className="flex h-9 items-center gap-2 rounded-md px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground">
               <LogOut className="size-4" aria-hidden /> Sign out
             </button>

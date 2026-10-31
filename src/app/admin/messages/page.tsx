@@ -7,11 +7,10 @@ import { Button } from "@/components/ui/button";
 import { Pagination, parsePage } from "@/components/ui/table";
 import { EmptyState, PageHeader } from "@/components/shared/states";
 import { requirePlatform } from "@/lib/auth/session";
-import type { Prisma } from "@/generated/prisma/client";
-import { db } from "@/lib/db";
-import { audit } from "@/lib/audit";
+import { messagesPage } from "@/features/admin/page-data";
+import { laravelPage } from "@/lib/laravel-api";
 import { formatBDT, formatDateTime, formatNumber } from "@/lib/format";
-import { formatBdPhone, normalizeBdPhone } from "@/lib/phone";
+import { formatBdPhone } from "@/lib/phone";
 
 export const metadata = { title: "Messages" };
 
@@ -23,16 +22,8 @@ export default async function AdminMessagesPage({ searchParams }: PageProps<"/ad
   const to = typeof sp.to === "string" ? sp.to.trim() : "";
   const status = STATUSES.find((s) => s === sp.status);
   const page = parsePage(sp.page);
-  const where: Prisma.MessageWhereInput = {
-    ...(to ? { to: normalizeBdPhone(to) ?? to } : {}),
-    ...(status ? { status } : {}),
-    ...(typeof sp.provider === "string" && sp.provider ? { providerMessageId: sp.provider } : {}),
-  };
-  const [rows, total] = await Promise.all([
-    db.message.findMany({ where, orderBy: { createdAt: "desc" }, skip: (page - 1) * 30, take: 30, include: { organization: { select: { id: true, name: true } } } }),
-    db.message.count({ where }),
-  ]);
-  if (to) await audit({ action: "admin.messages.search", actor: { type: "ADMIN", userId: session.user.id }, metadata: { recipient: to.slice(0, 20) } });
+  const provider = typeof sp.provider === "string" && sp.provider ? sp.provider : undefined;
+  const { rows, total, pageSize } = await laravelPage(() => messagesPage({ to, status, provider, page }, session.user.id));
   return (
     <>
       <PageHeader title="Messages" description={`${formatNumber(total)} messages across all customers. Searches by recipient are audited.`} />
@@ -99,7 +90,7 @@ export default async function AdminMessagesPage({ searchParams }: PageProps<"/ad
                 </tbody>
               </table>
             </div>
-            <Pagination page={page} pageSize={30} total={total} searchParams={sp} basePath="/admin/messages" />
+            <Pagination page={page} pageSize={pageSize} total={total} searchParams={sp} basePath="/admin/messages" />
           </>
         )}
       </Card>

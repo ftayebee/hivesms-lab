@@ -7,8 +7,8 @@ import { tenantWithPermission } from "@/lib/auth/session";
 import { can } from "@/lib/auth/context";
 import { formatBDT, formatDate } from "@/lib/format";
 import { getT } from "@/i18n/server";
-import { getOrganizationPlan } from "@/services/billing/pricing";
-import { listSenderIds } from "@/features/sender-ids/service";
+import { loadSenderIdsPage } from "@/features/sender-ids/service";
+import { laravelPage } from "@/lib/laravel-api";
 import { RequestSenderIdDialog, SenderIdRowActions } from "@/features/sender-ids/components/sender-id-ui";
 import type { StoredFile } from "@/services/storage";
 
@@ -18,9 +18,9 @@ export default async function SenderIdsPage() {
   const { ctx, allowed } = await tenantWithPermission("sender_ids:read");
   if (!allowed) return <PermissionDenied permission="sender_ids:read" />;
   const { t } = await getT();
-  const [senders, plan] = await Promise.all([listSenderIds(ctx), getOrganizationPlan(ctx.organizationId)]);
+  const { senders, senderIdFee } = await laravelPage(() => loadSenderIdsPage(ctx));
   const canManage = can(ctx, "sender_ids:manage");
-  const fee = Number(plan.senderIdFee) > 0 ? formatBDT(plan.senderIdFee.toString()) : null;
+  const fee = Number(senderIdFee) > 0 ? formatBDT(senderIdFee.toString()) : null;
   const hasDefault = senders.some((s) => s.isDefault && s.status === "APPROVED");
 
   return (

@@ -5,7 +5,7 @@ import { defineConfig, devices } from "@playwright/test";
  * payment providers and the console email driver (emails land in .local/mailbox).
  * The in-process worker (WORKER_IN_PROCESS=true) dispatches and delivers.
  *
- *   npm run db:local        # in another terminal (or point DATABASE_URL at Postgres)
+ *   npx prisma migrate deploy   # against a local MySQL/MariaDB (DATABASE_URL in .env)
  *   npm run build
  *   npm run test:e2e        # starts `next start` on :3210 (E2E_PORT) unless E2E_BASE_URL is set
  *

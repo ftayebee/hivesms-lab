@@ -11,6 +11,7 @@ import { requirePlatform } from "@/lib/auth/session";
 import { isAppError } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 import { getTicketForAdmin } from "@/features/admin/service";
+import { laravelPage } from "@/lib/laravel-api";
 import { staffReplyAction, ticketStatusAction } from "@/features/admin/actions";
 
 export const metadata = { title: "Ticket" };
@@ -22,7 +23,7 @@ export default async function AdminTicketPage({ params }: PageProps<"/admin/supp
   const { id } = await params;
   let t;
   try {
-    t = await getTicketForAdmin(id);
+    t = await laravelPage(() => getTicketForAdmin(id));
   } catch (err) {
     if (isAppError(err) && err.code === "NOT_FOUND") notFound();
     throw err;

@@ -1,12 +1,13 @@
 import { runAfter } from "@/lib/run-after";
 import { apiHandler } from "@/lib/api/handler";
+import { proxyRoute } from "@/lib/laravel/route";
 import { RateLimits } from "@/lib/rate-limit";
 import { sendMessages } from "@/services/messaging/send";
 import { dispatchNow } from "@/services/messaging/dispatcher";
 import { bulkSmsBody } from "@/features/public-api/schemas";
 
 /** POST /api/v1/sms/bulk: up to 1,000 recipients, optional per-recipient message/variables. */
-export const POST = apiHandler(
+const prismaPOST = apiHandler(
   { auth: "apiKey", scopes: ["sms:send"], body: bulkSmsBody, idempotent: true, rateLimit: RateLimits.apiSendPerKey, maxBodyBytes: 3_000_000 },
   async ({ body, ctx }) => {
     const result = await sendMessages(ctx!, {
@@ -36,3 +37,6 @@ export const POST = apiHandler(
     };
   },
 );
+
+/** LARAVEL_FEATURES `publicApi`: the same request (API key, body, Idempotency-Key) is answered by Laravel. */
+export const POST = proxyRoute("publicApi", () => "sms/bulk", prismaPOST);
