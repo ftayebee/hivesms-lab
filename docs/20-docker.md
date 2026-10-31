@@ -58,6 +58,10 @@ Edit `.env.docker`, then run the `up` command above again.
 
 Admin → Settings overrides `SMS_PROVIDER` once that setting has been saved.
 
+Admin → Overview shows the Automas balance and how many messages it can send. Automas has no price
+API, so keep `AUTOMAS_RATE_MASKING` and `AUTOMAS_RATE_NON_MASKING` in step with its Price List page, or
+save the rates in Admin → Costs & margins, which take priority.
+
 ## Everyday commands
 
 ```bash
