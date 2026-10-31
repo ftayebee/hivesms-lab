@@ -50,10 +50,12 @@ export default async function AdminSettingsPage() {
           <CardContent className="space-y-4">
             {provider.provider === "mock" && <Alert tone="warning">The mock provider is active: no real SMS is sent. Connect a licensed provider before going live.</Alert>}
             {provider.provider === "http" && <Alert tone="info">The generic HTTP adapter must be reviewed against your provider&apos;s API documentation before production use (see docs/05-integrations.md).</Alert>}
+            {provider.provider === "automas" && <Alert tone="info">Automas uses a fixed endpoint and only needs the API key, so the other fields below are ignored. It offers no delivery reports: messages stay at &quot;Sent&quot; once Automas accepts them and never show as delivered.</Alert>}
             <AdminForm action={saveSmsProviderAction} submitLabel="Save provider" className="grid gap-4 sm:grid-cols-2">
               <Field label="Provider">
                 <NativeSelect name="provider" defaultValue={provider.provider}>
                   <option value="mock">Mock (simulation)</option>
+                  <option value="automas">Automas Technologies</option>
                   <option value="http">Generic HTTP gateway</option>
                 </NativeSelect>
               </Field>

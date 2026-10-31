@@ -6,7 +6,7 @@ so connecting a real provider means writing **one adapter** and registering it.
 
 | Kind | Interface | Registry | Adapters today |
 |---|---|---|---|
-| SMS | `SmsProvider`: `src/services/sms/types.ts` | `src/services/sms/index.ts` | `mock` (working simulator), `http` (**unverified scaffolding**) |
+| SMS | `SmsProvider`: `src/services/sms/types.ts` | `src/services/sms/index.ts` | `mock` (working simulator), `automas` (**unverified until tested with a real key**), `http` (**unverified scaffolding**) |
 | Payments | `PaymentProvider`: `src/services/payments/types.ts` | `src/services/payments/index.ts` | `mock` (dev/staging only), `manual` (working), `sslcommerz` (**unverified**) |
 | Email | `EmailProvider`: `src/services/email/index.ts` | same file | `console` (dev: writes files), `http` (**unverified**) |
 | File storage | `StorageProvider`: `src/services/storage/index.ts` | same file | `local` (disk), `s3` (S3-compatible, SigV4 via `aws4fetch`) |
@@ -73,6 +73,36 @@ never report `DELIVERED` unless the operator actually confirmed delivery.
    depend on the provider.
 6. Add unit tests with recorded provider responses (see `tests/unit/providers.test.ts`).
 7. Complete the verification checklist, then set `verified = true`.
+
+### The `automas` adapter
+
+`src/services/sms/automas-provider.ts` targets [Automas Technologies](https://sms.automas.com.bd/api).
+Set `SMS_PROVIDER=automas`, `SMS_PROVIDER_API_KEY` and `SMS_DEFAULT_SENDER_ID`, or use Admin → Settings.
+The endpoint is fixed, so `SMS_PROVIDER_URL` is ignored.
+
+- **Sender IDs.** Automas rejects any sender ID not approved on your Automas account (status 102),
+  and the message is refunded. Approve a customer's sender ID at Automas before approving it here.
+- **IP allowlist.** If your account restricts API access by IP, allow your server's outgoing IP.
+  Otherwise sends return status 108.
+- **Status handling.** Message faults (101, 102, 105, 110, 111) are final and refunded. Account and
+  upstream problems (103, 104, 106–109, 1000, 2000, 2300, 2400, 3000, 3300, 4000) are retried with
+  backoff, then fail with a refund. Fix the account quickly, because customers' messages are waiting on it.
+- **Possible duplicates.** The API has no client reference, so a message that times out after
+  Automas accepted it is sent again on retry. Unreadable replies are not retried, for the same reason.
+- **No delivery reports.** Automas documents no webhooks and no status API. The adapter declares
+  `hasDeliveryReports = false`, so messages stay `SUBMITTED` (shown as "Sent") and never become
+  `DELIVERED`, delivered counts stay 0, and no `message.delivered` webhook is sent. They are not
+  expired after 72 hours, since that would report every send as failed. Webhook requests get 401.
+- **No balance API.** The documented balance URL is the send endpoint, so `getBalance` returns
+  `null`. Watch the balance in the Automas panel: an empty balance shows up as status 1000.
+- **Long messages.** The documentation is ambiguous about multi-part GSM-7 messages, so check that
+  they concatenate correctly on a handset (see the checklist below).
+
+Check credentials and a sender ID with one real message, which uses real SMS balance:
+
+```bash
+npm run sms:test -- 8801XXXXXXXXX YOUR_SENDER_ID "Test message"
+```
 
 ### The generic `http` adapter
 

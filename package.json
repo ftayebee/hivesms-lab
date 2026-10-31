@@ -10,6 +10,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "worker": "node --conditions=react-server --import tsx scripts/worker.ts",
+    "sms:test": "node --conditions=react-server --import tsx scripts/sms-test.ts",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:generate": "prisma generate",

@@ -21,7 +21,7 @@ const schema = z.object({
   SETTINGS_ENCRYPTION_KEY: z.string().min(32),
   CRON_SECRET: z.string().min(16),
 
-  SMS_PROVIDER: z.enum(["mock", "http"]).default("mock"),
+  SMS_PROVIDER: z.enum(["mock", "automas", "http"]).default("mock"),
   SMS_PROVIDER_URL: z.string().optional().default(""),
   SMS_PROVIDER_API_KEY: z.string().optional().default(""),
   SMS_PROVIDER_API_SECRET: z.string().optional().default(""),

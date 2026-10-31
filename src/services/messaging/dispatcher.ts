@@ -159,6 +159,8 @@ export async function dispatchNow(messageIds: string[]) {
  */
 export async function pollDeliveryStatuses(limit = 200) {
   const provider = await getSmsProvider();
+  // Without any report source, expiring messages would falsely report every send as failed.
+  if (provider.hasDeliveryReports === false) return { checked: 0, updated: 0 };
   const pollAfterMs = provider.key === "mock" ? 3_000 : 5 * 60_000;
   const now = Date.now();
   const candidates = await db.message.findMany({

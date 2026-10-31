@@ -26,7 +26,7 @@ export const SECRET_KEYS = [
 export type SecretKey = (typeof SECRET_KEYS)[number];
 
 export interface SmsProviderSettings {
-  provider: "mock" | "http";
+  provider: "mock" | "automas" | "http";
   url: string;
   /** Parameter-name mapping for the generic HTTP adapter. */
   mapping?: Partial<Record<"to" | "message" | "senderId" | "apiKey" | "apiSecret" | "type", string>>;
@@ -115,7 +115,7 @@ export async function getBillingPolicy(): Promise<BillingPolicy> {
 export async function getSmsProviderSettings(): Promise<SmsProviderSettings> {
   const override = await readRaw<Partial<SmsProviderSettings>>("sms.provider");
   return {
-    provider: override?.provider ?? ((process.env.SMS_PROVIDER as "mock" | "http") || "mock"),
+    provider: override?.provider ?? ((process.env.SMS_PROVIDER as SmsProviderSettings["provider"]) || "mock"),
     url: override?.url ?? process.env.SMS_PROVIDER_URL ?? "",
     mapping: override?.mapping,
   };

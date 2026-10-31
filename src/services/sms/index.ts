@@ -1,4 +1,5 @@
 import { getSecretSetting, getSmsProviderSettings } from "@/services/settings";
+import { AutomasSmsProvider } from "./automas-provider";
 import { HttpSmsProvider } from "./http-provider";
 import { MockSmsProvider } from "./mock-provider";
 import type { SmsProvider } from "./types";
@@ -15,6 +16,8 @@ export async function getSmsProvider(key?: string): Promise<SmsProvider> {
   const webhookSecret = await getSecretSetting("sms.provider.webhookSecret", process.env.SMS_PROVIDER_WEBHOOK_SECRET ?? "");
 
   switch (selected) {
+    case "automas":
+      return new AutomasSmsProvider({ apiKey: await getSecretSetting("sms.provider.apiKey", process.env.SMS_PROVIDER_API_KEY ?? "") });
     case "http":
       return new HttpSmsProvider({
         url: settings.url,
@@ -32,5 +35,6 @@ export async function getSmsProvider(key?: string): Promise<SmsProvider> {
 
 export const SMS_PROVIDER_OPTIONS = [
   { key: "mock", label: "Mock (local simulation, no real SMS)" },
+  { key: "automas", label: "Automas Technologies" },
   { key: "http", label: "Generic HTTP gateway (requires provider-specific review)" },
 ] as const;

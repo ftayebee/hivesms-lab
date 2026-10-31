@@ -81,6 +81,8 @@ export interface SmsProvider {
   readonly displayName: string;
   /** False for adapters that are scaffolding and need provider-specific review. */
   readonly verified: boolean;
+  /** False when the provider offers neither webhooks nor a status API: messages then stay SUBMITTED ("Sent"). */
+  readonly hasDeliveryReports?: boolean;
 
   sendSms(input: SendSmsInput): Promise<SendSmsResult>;
   sendBulkSms(inputs: SendSmsInput[]): Promise<SendSmsResult[]>;

@@ -124,7 +124,7 @@ export async function saveSmsPolicy(admin: AdminContext, input: z.infer<typeof s
 // ─── Providers (credentials encrypted; never returned to the browser) ───
 
 export const smsProviderSchema = z.object({
-  provider: z.enum(["mock", "http"]),
+  provider: z.enum(["mock", "automas", "http"]),
   url: z.string().trim().max(500).optional().default(""),
   apiKey: z.string().max(500).optional().default(""),
   apiSecret: z.string().max(500).optional().default(""),

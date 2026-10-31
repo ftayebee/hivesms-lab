@@ -82,7 +82,9 @@ time and at runtime. Generate each secret with
 | `AUTH_SECRET`, `API_KEY_PEPPER`, `SETTINGS_ENCRYPTION_KEY`, `CRON_SECRET` | unique random values; keep a copy in a password manager (see [Backups](#15-backups)) |
 | `WORKER_IN_PROCESS` | `false` (background work runs from cron, step 13) |
 | `WORKER_TICK_BUDGET_MS` | `45000` |
-| `SMS_PROVIDER` + `SMS_PROVIDER_*` | your gateway (see [05-integrations](05-integrations.md)); `mock` sends nothing |
+| `SMS_PROVIDER` | `automas` (see [05-integrations](05-integrations.md#the-automas-adapter)); `mock` sends nothing |
+| `SMS_PROVIDER_API_KEY` | your Automas API key |
+| `SMS_DEFAULT_SENDER_ID` | a sender ID approved on your Automas account |
 | `EMAIL_PROVIDER` + `EMAIL_*` | `http` provider for real email; `console` only writes files |
 | `STORAGE_PROVIDER` | `s3` recommended (below) |
 | `STORAGE_S3_*` | S3-compatible bucket (AWS S3, Cloudflare R2, …) |

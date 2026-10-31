@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHmac } from "node:crypto";
 import { MockSmsProvider } from "@/services/sms/mock-provider";
 import { HttpSmsProvider } from "@/services/sms/http-provider";
+import { AutomasSmsProvider } from "@/services/sms/automas-provider";
 import { basicSenderIdValidation, type SendSmsInput } from "@/services/sms/types";
 
 const input = (to: string): SendSmsInput => ({ reference: "r1", to, message: "Hello", senderId: "BRAND", senderType: "MASKING", smsType: "TRANSACTIONAL", encoding: "GSM7" });
@@ -83,6 +84,92 @@ describe("generic HTTP provider", () => {
   it("never accepts unsigned webhooks", async () => {
     const p = new HttpSmsProvider({ url: "x", apiKey: "k", apiSecret: "", webhookSecret: "" });
     expect(await p.verifyWebhook({ headers: new Headers(), rawBody: "{}", query: new URLSearchParams() })).toBe(false);
+  });
+});
+
+describe("Automas provider", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const p = new AutomasSmsProvider({ apiKey: "k" });
+  const reply = (entry: unknown) => vi.fn(async () => new Response(JSON.stringify({ response: [entry] }), { status: 200 }));
+  const bangla: SendSmsInput = { ...input("+8801712345678"), message: "পরীক্ষা", encoding: "UCS2" };
+
+  it("form-posts the documented parameters without a leading plus and keeps the key out of the URL", async () => {
+    const fetchMock = reply({ status: 0, id: 296334, msisdn: "8801712345678" });
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await p.sendSms(input("+8801712345678"))).toMatchObject({ ok: true, providerMessageId: "296334" });
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("https://api.automas.com.bd/smsapiv3");
+    const form = new URLSearchParams(String(init.body));
+    expect(Object.fromEntries(form)).toEqual({ apikey: "k", sender: "BRAND", msisdn: "8801712345678", smstext: "Hello" });
+  });
+
+  it("sets the Unicode flags for Bangla and sends the text intact", async () => {
+    const fetchMock = reply({ status: 0, id: 1 });
+    vi.stubGlobal("fetch", fetchMock);
+    await p.sendSms(bangla);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const form = new URLSearchParams(String(init.body));
+    expect(form.get("smstext")).toBe("পরীক্ষা");
+    expect(form.get("type")).toBe("8");
+    expect(form.get("smsformat")).toBe("8");
+  });
+
+  it("does not mistake a failed send for success, even though it carries an id (recorded live)", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response('{"response":[{"status":106,"id":165804,"msisdn":"8801700000000"}]}', { status: 200 })));
+    expect(await p.sendSms(input("+8801700000000"))).toMatchObject({ ok: false, errorCode: "AUTOMAS_106", retryable: true });
+  });
+
+  it.each([101, 102, 105, 110, 111])("treats message fault %i as final", async (status) => {
+    vi.stubGlobal("fetch", reply({ status, id: 1 }));
+    expect(await p.sendSms(input("+8801712345678"))).toMatchObject({ ok: false, retryable: false, errorCode: `AUTOMAS_${status}` });
+  });
+
+  it.each([103, 104, 106, 107, 108, 109, 1000, 2000, 2300, 2400, 3000, 3300, 4000])("retries account or upstream problem %i", async (status) => {
+    vi.stubGlobal("fetch", reply({ status, id: 1 }));
+    expect(await p.sendSms(input("+8801712345678"))).toMatchObject({ ok: false, retryable: true });
+  });
+
+  it("accepts a numeric status sent as a string", async () => {
+    vi.stubGlobal("fetch", reply({ status: "0", id: 7 }));
+    expect(await p.sendSms(input("+8801712345678"))).toMatchObject({ ok: true, providerMessageId: "7" });
+  });
+
+  it("does not retry undocumented statuses or unreadable replies, which could send twice", async () => {
+    vi.stubGlobal("fetch", reply({ status: 9999, id: 1 }));
+    expect(await p.sendSms(input("+8801712345678"))).toMatchObject({ ok: false, retryable: false });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("<html>oops</html>", { status: 200 })));
+    expect(await p.sendSms(input("+8801712345678"))).toMatchObject({ ok: false, retryable: false, errorCode: "INVALID_RESPONSE_200" });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
+    expect(await p.sendSms(input("+8801712345678"))).toMatchObject({ ok: false, retryable: false });
+  });
+
+  it("retries 5xx, 429 and network errors", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("down", { status: 503 })));
+    expect(await p.sendSms(input("+8801712345678"))).toMatchObject({ ok: false, retryable: true, errorCode: "HTTP_503" });
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("connect failed"); }));
+    expect(await p.sendSms(input("+8801712345678"))).toMatchObject({ ok: false, retryable: true, errorCode: "NETWORK_ERROR" });
+  });
+
+  it("keeps bulk results in input order", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (_url: string, init: RequestInit) => {
+      const to = new URLSearchParams(String(init.body)).get("msisdn");
+      return new Response(JSON.stringify({ response: [{ status: 0, id: to }] }), { status: 200 });
+    }));
+    const numbers = Array.from({ length: 25 }, (_, i) => `+88017123456${String(i).padStart(2, "0")}`);
+    const results = await p.sendBulkSms(numbers.map(input));
+    expect(results.map((r) => r.ok && r.providerMessageId)).toEqual(numbers.map((n) => n.slice(1)));
+  });
+
+  it("reports missing configuration without calling the network", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect(await new AutomasSmsProvider({ apiKey: "" }).sendSms(input("+8801712345678"))).toMatchObject({ ok: false, retryable: true, errorCode: "PROVIDER_NOT_CONFIGURED" });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("declares no delivery reports and refuses all webhooks", async () => {
+    expect(p.hasDeliveryReports).toBe(false);
+    expect(await p.verifyWebhook()).toBe(false);
   });
 });
 

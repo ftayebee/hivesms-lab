@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { db } from "@/lib/db";
 import { sendMessages } from "@/services/messaging/send";
 import { applyStatusUpdate } from "@/services/messaging/delivery";
 import { claimQueuedMessages, dispatchMessages, pollDeliveryStatuses } from "@/services/messaging/dispatcher";
+import { clearSettingsCache } from "@/services/settings";
+import { AutomasSmsProvider } from "@/services/sms/automas-provider";
 import { MockSmsProvider } from "@/services/sms/mock-provider";
 import { balanceOf, createTenant, resetDatabase } from "../support/factories";
 
@@ -100,6 +102,28 @@ describe("dispatch and delivery reports", () => {
     // 3 x 0.40 charged, 2 refunded.
     expect(await balanceOf(org.id)).toBeCloseTo(9.6);
     expect(await db.walletTransaction.count({ where: { organizationId: org.id, reason: "REFUND" } })).toBe(2);
+  });
+
+  it("leaves messages at SUBMITTED for a provider without delivery reports, instead of expiring them as failed", async () => {
+    const { ctx, org } = await createTenant({ balance: 10 });
+    await sendMessages(ctx, { ...base, recipients: [{ phone: "01712345671" }], mode: "single" });
+    const before = await balanceOf(org.id);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response('{"response":[{"status":0,"id":296334,"msisdn":"8801712345671"}]}', { status: 200 })));
+    vi.stubEnv("SMS_PROVIDER", "automas");
+    clearSettingsCache();
+    try {
+      const r = await dispatchMessages(await claimQueuedMessages(10), new AutomasSmsProvider({ apiKey: "k" }));
+      expect(r.submitted).toBe(1);
+      const old = new Date(Date.now() - 73 * 3600_000);
+      await db.message.updateMany({ where: { status: "SUBMITTED" }, data: { submittedAt: old, updatedAt: old } });
+      expect(await pollDeliveryStatuses()).toEqual({ checked: 0, updated: 0 });
+      expect(await db.message.findFirstOrThrow({ where: { to: "+8801712345671" } })).toMatchObject({ status: "SUBMITTED", provider: "automas", providerMessageId: "296334" });
+      expect(await balanceOf(org.id)).toBeCloseTo(before);
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      clearSettingsCache();
+    }
   });
 
   it("retries temporary provider errors with backoff", async () => {
