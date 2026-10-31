@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity, BadgeCheck, Building2, CircleAlert, Coins, CreditCard, Flag, LifeBuoy, Megaphone, Send, Users } from "lucide-react";
+import { Activity, BadgeCheck, Building2, CircleAlert, Coins, CreditCard, Flag, LifeBuoy, Megaphone, Send, Users, Wallet } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { SpendChart, UsageChart } from "@/components/dashboard/charts";
@@ -11,7 +11,8 @@ import { laravelPage } from "@/lib/laravel-api";
 import { requirePlatform } from "@/lib/auth/session";
 import { platformCan } from "@/lib/auth/permissions";
 import { RangeFilter, rangeParams } from "@/components/admin/range-filter";
-import { parseRange, platformDashboard, superAdminAvailable, type PlatformDashboard, type RangeQuery } from "@/features/admin/super-admin";
+import { SmsQuantity } from "@/components/dashboard/sms-quantity";
+import { parseRange, platformDashboard, providerBalance, superAdminAvailable, type PlatformDashboard, type RangeQuery } from "@/features/admin/super-admin";
 import { formatBDT, formatDateTime, formatNumber } from "@/lib/format";
 
 export const metadata = { title: "Overview" };
@@ -22,6 +23,7 @@ export default async function AdminOverviewPage({ searchParams }: PageProps<"/ad
   const { o, providerKey } = await laravelPage(() => adminOverviewPage());
   const range = parseRange(sp);
   const dash = superAdminAvailable() ? await laravelPage(() => platformDashboard(range)) : null;
+  const gateway = superAdminAvailable() && platformCan(session.user.platformRole, "admin:finance:read") ? await laravelPage(() => providerBalance()) : null;
   const queues = [
     { href: "/admin/campaigns?status=PENDING_REVIEW", label: "Campaigns awaiting review", n: o.reviewCampaigns, icon: Megaphone },
     { href: "/admin/sender-ids?status=PENDING", label: "Sender IDs awaiting review", n: o.pendingSenders, icon: BadgeCheck },
@@ -37,6 +39,38 @@ export default async function AdminOverviewPage({ searchParams }: PageProps<"/ad
         <Alert tone="warning" className="mb-6">
           Your staff role does not include access to that page.
         </Alert>
+      )}
+      {gateway && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>SMS gateway balance</CardTitle>
+            <CardDescription>
+              {gateway.available
+                ? `What ${gateway.provider} can still send, counting single-part messages. Updated every minute.`
+                : `Couldn't read the balance from ${gateway.provider}. Check the API key, or the provider may not offer this.`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <StatsCard
+              label="Current balance"
+              value={gateway.balance === null ? "-" : formatBDT(gateway.balance)}
+              icon={Wallet}
+              tone="accent"
+              hint={
+                gateway.maskingRate
+                  ? `${formatBDT(gateway.maskingRate)} masking · ${formatBDT(gateway.nonMaskingRate ?? "0")} non-masking, from ${gateway.rateSource === "costs_settings" ? "Costs & margins" : "the provider's price list"}`
+                  : undefined
+              }
+            />
+            <div>
+              <p className="mb-2 text-sm font-medium">SMS Quantity</p>
+              <SmsQuantity
+                masking={gateway.maskingCount === null ? null : formatNumber(gateway.maskingCount)}
+                nonMasking={gateway.nonMaskingCount === null ? null : formatNumber(gateway.nonMaskingCount)}
+              />
+            </div>
+          </CardContent>
+        </Card>
       )}
       {dash && <PlatformSection d={dash} range={range} canFinance={platformCan(session.user.platformRole, "admin:finance:read")} />}
       <section aria-label="Key metrics" className="grid grid-cols-2 gap-4 lg:grid-cols-4">

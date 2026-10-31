@@ -49,6 +49,11 @@ return [
         'provider_webhook_secret' => env('SMS_PROVIDER_WEBHOOK_SECRET', ''),
         'default_sender_id' => env('SMS_DEFAULT_SENDER_ID', '8809600000000'),
         'provider_timeout_seconds' => (int) env('SMS_PROVIDER_TIMEOUT', 15),
+        // What the gateway charges us per SMS (its Price List page, read 2026-11-01). There is no price
+        // API. Used for the admin dashboard's message counts unless Admin → Costs & margins has rates.
+        'provider_rates' => [
+            'automas' => ['masking' => env('AUTOMAS_RATE_MASKING', '0.50'), 'non_masking' => env('AUTOMAS_RATE_NON_MASKING', '0.22')],
+        ],
         // Dispatch small sends right after the HTTP response (the worker picks up anything left).
         'inline_dispatch' => env('SMS_INLINE_DISPATCH', true),
         'inline_dispatch_max' => 200,

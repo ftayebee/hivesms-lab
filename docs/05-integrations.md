@@ -99,9 +99,10 @@ Admin settings override the env value, so an existing `sms.provider` setting mus
   `hasDeliveryReports = false`, so messages stay `SUBMITTED` (shown as "Sent") and never become
   `DELIVERED`, delivered counts stay 0, and no `message.delivered` webhook is sent. They are not
   expired after 72 hours, since that would report every send as failed. Webhook requests get 401.
-- **Balance not wired yet.** The logged-in API page has a balance check, but its URL contains the
-  key and has not been recorded here, so `getBalance` returns `null`. Watch the balance in the
-  Automas panel: an empty balance shows up as status 1000.
+- **Balance.** The Laravel adapter reads `getbalancev3`, and Admin → Overview shows it with message
+  counts. Automas has no price API, so counts use the rates in Costs & margins, or else the price list
+  values in `config/smsflow.php` (Tk 0.50 masking, 0.22 non-masking, read 2026-11-01). Update those
+  if Automas changes its prices. The balance URL contains the key, so never log it.
 - **Long messages.** Multi-part messages are sent with `type=long`, and Unicode with `smsformat=8`,
   as the logged-in API page specifies. Check that they join correctly on a handset (see the checklist
   below).

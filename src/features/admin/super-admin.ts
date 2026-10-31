@@ -200,6 +200,24 @@ export async function customerExtras(id: string) {
   };
 }
 
+// ─── SMS gateway balance ───
+
+export interface ProviderBalance {
+  provider: string;
+  available: boolean;
+  balance: string | null;
+  maskingCount: number | null;
+  nonMaskingCount: number | null;
+  maskingRate: string | null;
+  nonMaskingRate: string | null;
+  rateSource: "costs_settings" | "price_list" | null;
+}
+
+export async function providerBalance() {
+  requireLaravel();
+  return laravelData<ProviderBalance>("admin/finance/provider-balance");
+}
+
 // ─── Customer usage ───
 
 export interface UsageCounts {

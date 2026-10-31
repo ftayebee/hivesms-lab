@@ -13,6 +13,7 @@ use App\Models\AuditLog;
 use App\Services\Admin\FinanceService;
 use App\Services\Admin\PlatformDashboardService;
 use App\Services\Admin\PrivilegedActionGuard;
+use App\Services\Admin\ProviderBalanceService;
 use App\Services\Platform\ReadinessService;
 use App\Support\DateRange;
 use Illuminate\Http\JsonResponse;
@@ -42,6 +43,12 @@ class AdminFinanceController extends ApiController
         }
 
         return $this->ok($d);
+    }
+
+    /** GET /admin/finance/provider-balance (admin:finance:read): gateway balance and what it can send. */
+    public function providerBalance(ProviderBalanceService $balance): JsonResponse
+    {
+        return $this->ok($balance->summary());
     }
 
     /** GET /admin/finance/summary?range=&from=&to= (admin:finance:read). */
