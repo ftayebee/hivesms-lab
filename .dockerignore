@@ -15,3 +15,7 @@ blob-report
 Dockerfile
 docker-compose*.yml
 src/generated
+backend
+docker
+docs
+.github

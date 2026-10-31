@@ -1,31 +1,47 @@
-# Single-host (VPS) deployment: MariaDB, a one-shot migration job, the web app and the worker.
-# For Hostinger Business web hosting (no Docker) see docs/07-hostinger-deployment.md.
+# Complete stack: MariaDB, the Laravel API, its scheduler and the Next.js panel. See docs/20-docker.md.
 #
-#   cp .env.example .env.production   # fill in real secrets (see docs/04-deployment.md)
-#   docker compose --env-file .env.production up -d --build
+#   sh docker/init-env.sh
+#   docker compose --env-file .env.docker up -d --build
 #
-# Put a TLS-terminating reverse proxy (Caddy, nginx, a cloud load balancer) in front of
-# `web`; the app sets HSTS and secure cookies and expects HTTPS in production.
+# The panel is on http://localhost:3000. Only the panel is published: browsers and customers' servers
+# reach the API through it, so `api` and `db` stay on the internal network.
+# For HTTPS on a server, set SITE_DOMAIN and add `--profile tls`.
 
 name: smsflow
 
-x-app-env: &app-env
-  env_file: .env.production
-  environment:
-    DATABASE_URL: mysql://${MYSQL_USER:-smsflow}:${MYSQL_PASSWORD:?set MYSQL_PASSWORD}@db:3306/${MYSQL_DATABASE:-smsflow}
-    LOCAL_DATA_DIR: /app/data
-    # The dedicated worker service runs background jobs; keep them out of the web process.
-    WORKER_IN_PROCESS: "false"
+x-env: &env
+  env_file: .env.docker
+
+x-api: &api
+  <<: *env
+  build: ./backend
+  image: smsflow-api
+  environment: &api-environment
+    APP_ENV: production
+    APP_DEBUG: "false"
+    APP_URL: http://api
+    FRONTEND_URL: ${APP_URL:?set APP_URL}
+    DB_CONNECTION: mysql
+    DB_HOST: db
+    DB_PORT: "3306"
+    LOG_CHANNEL: stderr
+    SESSION_DRIVER: array
+    CACHE_STORE: database
+    QUEUE_CONNECTION: database
+    QUEUE_WORKER_VIA_SCHEDULER: "true"
+    DOCUMENTS_DISK: local
+  volumes:
+    - apistorage:/var/www/html/storage
 
 services:
   db:
     image: mariadb:11.4
     restart: unless-stopped
     environment:
-      MARIADB_USER: ${MYSQL_USER:-smsflow}
-      MARIADB_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD}
-      MARIADB_DATABASE: ${MYSQL_DATABASE:-smsflow}
-      MARIADB_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD}
+      MARIADB_DATABASE: ${DB_DATABASE:-smsflow}
+      MARIADB_USER: ${DB_USERNAME:-smsflow}
+      MARIADB_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD}
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?set DB_ROOT_PASSWORD}
     command: ["--character-set-server=utf8mb4", "--collation-server=utf8mb4_unicode_ci"]
     volumes:
       - dbdata:/var/lib/mysql
@@ -33,44 +49,78 @@ services:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
-      retries: 10
-    # Not published to the host. Use `docker compose exec db mariadb -u root -p` for access.
+      retries: 12
 
-  migrate:
-    build: { context: ., target: tools, args: { APP_URL: "${APP_URL:?set APP_URL}" } }
-    image: smsflow-tools
-    <<: *app-env
-    # Applies migrations, then the idempotent bootstrap (permissions, example pricing, optional first admin).
-    command: ["sh", "-c", "npx prisma migrate deploy && npm run db:bootstrap"]
+  # One-shot: creates the schema on an empty database, then the example plans and packages.
+  # Safe on every start: it never changes existing data or Admin → Pricing edits.
+  setup:
+    <<: *api
+    user: www-data
+    restart: "no"
+    command: ["sh", "-c", "php artisan migrate --force --no-ansi && php artisan platform:bootstrap-catalog --no-ansi"]
+    healthcheck:
+      disable: true
     depends_on:
       db: { condition: service_healthy }
-    restart: "no"
+
+  api:
+    <<: *api
+    restart: unless-stopped
+    depends_on:
+      setup: { condition: service_completed_successfully }
+
+  # Sends queued SMS and emails, launches campaigns and runs housekeeping.
+  scheduler:
+    <<: *api
+    user: www-data
+    restart: unless-stopped
+    stop_grace_period: 60s
+    command: ["php", "artisan", "schedule:work", "--no-ansi"]
+    healthcheck:
+      disable: true
+    depends_on:
+      setup: { condition: service_completed_successfully }
 
   web:
-    build: { context: ., target: web, args: { APP_URL: "${APP_URL:?set APP_URL}" } }
+    <<: *env
+    build:
+      context: .
+      target: web
+      args:
+        APP_URL: ${APP_URL:?set APP_URL}
     image: smsflow-web
-    <<: *app-env
     restart: unless-stopped
+    environment:
+      LARAVEL_API_URL: http://api/api/v1
+      LARAVEL_FEATURES: all
+      WORKER_IN_PROCESS: "false"
+      # Required by the app's settings check. With every feature on Laravel the panel doesn't query it.
+      DATABASE_URL: mysql://${DB_USERNAME:-smsflow}:${DB_PASSWORD:?set DB_PASSWORD}@db:3306/${DB_DATABASE:-smsflow}
+      LOCAL_DATA_DIR: /app/data
     ports:
-      - "127.0.0.1:3000:3000"
+      - "${WEB_BIND:-127.0.0.1}:${WEB_PORT:-3000}:3000"
     volumes:
-      - appdata:/app/data
+      - webdata:/app/data
     depends_on:
-      db: { condition: service_healthy }
-      migrate: { condition: service_completed_successfully }
+      api: { condition: service_healthy }
 
-  worker:
-    build: { context: ., target: tools, args: { APP_URL: "${APP_URL:?set APP_URL}" } }
-    image: smsflow-tools
-    <<: *app-env
+  caddy:
+    image: caddy:2.8-alpine
+    profiles: ["tls"]
     restart: unless-stopped
-    stop_grace_period: 30s
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
     volumes:
-      - appdata:/app/data
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
     depends_on:
-      db: { condition: service_healthy }
-      migrate: { condition: service_completed_successfully }
+      - web
 
 volumes:
   dbdata:
-  appdata:
+  apistorage:
+  webdata:
+  caddydata:

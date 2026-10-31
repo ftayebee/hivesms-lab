@@ -110,7 +110,8 @@ docs/               product analysis, architecture, design system, deployment, i
 1. [Product analysis](docs/01-product-analysis.md): market reference review and product decisions
 2. [Architecture](docs/02-architecture.md): tenancy, RBAC, the messaging pipeline, billing, security
 3. [Design system](docs/03-design-system.md): tokens, components, charts, accessibility
-4. [Deployment and operations](docs/04-deployment.md): Docker, configuration, backups, monitoring
+4. [Deployment and operations](docs/04-deployment.md): configuration, backups, monitoring. To run the
+   complete stack with one command, see [Running with Docker](docs/20-docker.md)
 5. [Integrations](docs/05-integrations.md): provider interfaces and the replacement guide
 
 The public API reference is served by the app at `/docs`.

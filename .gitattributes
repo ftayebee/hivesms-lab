@@ -1,0 +1,6 @@
+# Read inside Linux containers or by sh, so these must keep LF on Windows checkouts too.
+*.sh text eol=lf
+Dockerfile text eol=lf
+docker/** text eol=lf
+backend/docker/** text eol=lf
+.env.docker.example text eol=lf

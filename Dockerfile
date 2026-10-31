@@ -26,8 +26,15 @@ RUN --mount=type=cache,target=/root/.npm npm ci --ignore-scripts --no-audit --no
 FROM base AS build
 ARG APP_URL=http://localhost:3000
 ENV APP_URL=${APP_URL}
-# Only needed so prisma.config.ts can load during `prisma generate`; never used to connect.
-ENV DATABASE_URL=mysql://build:build@localhost:3306/build
+# Build-time placeholders only: they satisfy the settings check and stay out of the final image.
+# The API isn't running during the build, so public pages fall back and refresh once it is.
+ENV DATABASE_URL=mysql://build:build@localhost:3306/build \
+    AUTH_SECRET=build-only-placeholder-not-a-real-secret-000 \
+    API_KEY_PEPPER=build-only-placeholder-not-a-real-secret-000 \
+    SETTINGS_ENCRYPTION_KEY=build-only-placeholder-not-a-real-secret-000 \
+    CRON_SECRET=build-only-placeholder \
+    LARAVEL_FEATURES=all \
+    LARAVEL_API_URL=http://api/api/v1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

@@ -1,0 +1,37 @@
+name: Docker
+
+on:
+  push:
+    branches: [docker]
+  pull_request:
+    paths: ["Dockerfile", "docker-compose.yml", "docker/**", "backend/Dockerfile", "backend/docker/**", ".env.docker.example"]
+
+jobs:
+  stack:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create configuration
+        run: sh docker/init-env.sh
+      - name: Build and start the stack
+        run: docker compose --env-file .env.docker up -d --build
+      - name: Wait for the panel
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:3000/api/health && exit 0
+            sleep 5
+          done
+          exit 1
+      - name: Check the panel and API work together
+        run: |
+          curl -fsS http://localhost:3000/login | grep -q 'Sign in to your account'
+          curl -fsS http://localhost:3000/register | grep -q 'Create your account'
+          docker compose --env-file .env.docker exec -T api php -r "echo file_get_contents('http://127.0.0.1/api/v1/public/pricing');" | grep -q '"key":"starter"'
+          docker compose --env-file .env.docker exec -T scheduler php artisan schedule:list --no-ansi | grep -q 'sms:work'
+      - name: Show logs
+        if: failure()
+        run: docker compose --env-file .env.docker logs --tail=100
+      - name: Stop
+        if: always()
+        run: docker compose --env-file .env.docker down -v

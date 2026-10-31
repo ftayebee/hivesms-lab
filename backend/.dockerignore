@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+vendor
+node_modules
+dist
+backend.zip
+tests
+phpunit.xml
+.phpunit.*
+storage/logs/*
+storage/framework/cache/data/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/app/private/*
+bootstrap/cache/*.php
+Dockerfile
