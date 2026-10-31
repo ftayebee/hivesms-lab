@@ -17,7 +17,8 @@ import { laravelPage } from "@/lib/laravel-api";
 import { formatBDT, formatDate, formatDateTime, formatNumber, formatRelative } from "@/lib/format";
 import { getOrganizationDetail } from "@/features/admin/service";
 import { adjustWalletAction, sendPasswordResetAction, setOrgStatusAction, updateOrgControlsAction } from "@/features/admin/actions";
-import { customerExtras, superAdminAvailable } from "@/features/admin/super-admin";
+import { customerExtras, customerUsage, superAdminAvailable } from "@/features/admin/super-admin";
+import { UsageChart } from "@/components/dashboard/charts";
 
 export const metadata = { title: "Customer" };
 
@@ -36,6 +37,7 @@ export default async function AdminCustomerPage({ params }: PageProps<"/admin/cu
   const canManage = platformCan(session.user.platformRole, "admin:customers:manage");
   const canAdjust = platformCan(session.user.platformRole, "admin:wallet:adjust");
   const extras = superAdminAvailable() ? await laravelPage(() => customerExtras(id)) : null;
+  const usage = superAdminAvailable() ? await laravelPage(() => customerUsage(id, { range: "30d" })) : null;
   // One key per rendered form: a double submit or retry applies the adjustment once.
   const adjustmentKey = `adj_${randomUUID().replaceAll("-", "")}`;
 
@@ -213,6 +215,31 @@ export default async function AdminCustomerPage({ params }: PageProps<"/admin/cu
           </ul>
         </Card>
       </div>
+
+      {usage && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Usage in the last 30 days</CardTitle>
+            <CardDescription>
+              {formatNumber(usage.totals.messages)} messages, {formatNumber(usage.totals.segments)} segments, {formatBDT(usage.totals.charged)} charged.{" "}
+              <Link href={`/admin/usage?q=${encodeURIComponent(org.name)}`} className="font-medium text-primary hover:underline">
+                Compare with other customers
+              </Link>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <UsageChart data={usage.series} />
+            <dl className="mt-4 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+              {Object.entries({ ...usage.bySource, ...usage.byType }).map(([k, n]) => (
+                <div key={k} className="flex gap-2">
+                  <dt className="text-muted-foreground">{k === "API" ? k : k.charAt(0) + k.slice(1).toLowerCase()}</dt>
+                  <dd className="tabular">{formatNumber(n)}</dd>
+                </div>
+              ))}
+            </dl>
+          </CardContent>
+        </Card>
+      )}
 
       {extras && (
         <div className="mt-6 grid gap-6 xl:grid-cols-2 [&>*]:min-w-0">

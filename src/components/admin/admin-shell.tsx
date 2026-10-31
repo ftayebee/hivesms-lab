@@ -10,6 +10,7 @@ import {
   BadgeCheck,
   Calculator,
   Building2,
+  ChartColumn,
   CreditCard,
   Flag,
   Gauge,
@@ -39,6 +40,7 @@ import { useCloseOnNavigate } from "@/hooks/use-close-on-navigate";
 const NAV: { href: string; label: string; icon: LucideIcon; perm: PlatformPermission; badgeKey?: string }[] = [
   { href: "/admin", label: "Overview", icon: Gauge, perm: "admin:access" },
   { href: "/admin/customers", label: "Customers", icon: Building2, perm: "admin:customers:read" },
+  { href: "/admin/usage", label: "Usage", icon: ChartColumn, perm: "admin:customers:read" },
   { href: "/admin/campaigns", label: "Campaigns", icon: Megaphone, perm: "admin:campaigns:review", badgeKey: "campaigns" },
   { href: "/admin/messages", label: "Messages", icon: MessageSquare, perm: "admin:messages:read" },
   { href: "/admin/sender-ids", label: "Sender IDs", icon: BadgeCheck, perm: "admin:sender_ids:review", badgeKey: "senders" },

@@ -77,6 +77,8 @@ export const en = {
   auth: {
     loginTitle: "Sign in to your account",
     loginSubtitle: "Welcome back. Enter your details to continue.",
+    continueWithGoogle: "Continue with Google",
+    orDivider: "or",
     registerTitle: "Create your account",
     registerSubtitle: "Start with a free account. Pay only for the messages you send.",
     identifier: "Email or mobile number",

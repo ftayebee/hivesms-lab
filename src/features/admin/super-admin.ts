@@ -200,4 +200,35 @@ export async function customerExtras(id: string) {
   };
 }
 
-export const EXPORT_KINDS = ["customers", "payments", "transactions", "margins", "audit-logs"] as const;
+// ─── Customer usage ───
+
+export interface UsageCounts {
+  messages: number;
+  segments: number;
+  delivered: number;
+  pending: number;
+  failed: number;
+  charged: string;
+}
+type UsageDay = { day: string; delivered: number; pending: number; failed: number; spend: number };
+
+export async function usageOverview(q: RangeQuery & { q?: string; page: number }) {
+  requireLaravel();
+  const res = await laravel.get<Array<UsageCounts & { id: string; name: string; status: string; plan: string | null; lastSentAt: string | null }>>("admin/usage", q);
+  const meta = pageMeta(res.meta, 50);
+  return {
+    rows: res.data.map((r) => ({ ...r, lastSentAt: date(r.lastSentAt) })),
+    total: meta.total,
+    pageSize: meta.pageSize,
+    totals: res.meta.totals as UsageCounts,
+    activeCustomers: res.meta.activeCustomers as number,
+    series: res.meta.series as UsageDay[],
+  };
+}
+
+export async function customerUsage(id: string, q: RangeQuery) {
+  requireLaravel();
+  return laravelData<{ totals: UsageCounts; series: UsageDay[]; bySource: Record<string, number> | []; byType: Record<string, number> | [] }>(`admin/customers/${enc(id)}/usage`, q);
+}
+
+export const EXPORT_KINDS =["customers", "payments", "transactions", "margins", "audit-logs"] as const;

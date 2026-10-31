@@ -10,8 +10,10 @@ use App\Http\Controllers\Api\V1\Admin\AdminReviewController;
 use App\Http\Controllers\Api\V1\Admin\AdminSettingsController;
 use App\Http\Controllers\Api\V1\Admin\AdminStaffController;
 use App\Http\Controllers\Api\V1\Admin\AdminSupportController;
+use App\Http\Controllers\Api\V1\Admin\AdminUsageController;
 use App\Http\Controllers\Api\V1\ApiKeys\ApiKeyController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
+use App\Http\Controllers\Api\V1\Auth\GoogleAuthController;
 use App\Http\Controllers\Api\V1\Campaigns\CampaignController;
 use App\Http\Controllers\Api\V1\Contacts\ContactController;
 use App\Http\Controllers\Api\V1\Contacts\ContactExportController;
@@ -69,6 +71,8 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
     Route::prefix('auth')->name('auth.')->group(function (): void {
         Route::post('register', [AuthController::class, 'register'])->name('register');
         Route::post('login', [AuthController::class, 'login'])->name('login');
+        Route::get('providers', [GoogleAuthController::class, 'providers'])->name('providers');
+        Route::post('google', [GoogleAuthController::class, 'signIn'])->name('google');
         Route::middleware('ratelimit:password_reset_per_ip')->group(function (): void {
             Route::post('email/verify', [AuthController::class, 'verifyEmail'])->name('verify-email');
             Route::post('verify-email', [AuthController::class, 'verifyEmail'])->name('verify-email.alias');
@@ -292,6 +296,8 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
         Route::middleware('platform:admin:customers:read')->group(function (): void {
             Route::get('customers', [AdminCustomerController::class, 'index'])->name('customers.index');
             Route::get('customers/{id}', [AdminCustomerController::class, 'show'])->name('customers.show');
+            Route::get('customers/{id}/usage', [AdminUsageController::class, 'show'])->name('customers.usage');
+            Route::get('usage', [AdminUsageController::class, 'index'])->name('usage');
             Route::get('leads', [AdminPlatformController::class, 'leads'])->name('leads');
             Route::put('leads/{id}', [AdminPlatformController::class, 'updateLead'])->name('leads.update');
         });

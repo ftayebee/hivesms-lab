@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { RegisterForm } from "@/features/auth/components/auth-forms";
+import { GoogleButton } from "@/features/auth/components/google-button";
+import { googleProvider } from "@/features/auth/google";
 import { registrationOpen } from "@/features/auth/service";
 import { Alert } from "@/components/ui/misc";
 import { getSession } from "@/lib/auth/session";
@@ -12,13 +14,17 @@ export const metadata = pageMetadata({ title: "Create an account", description: 
 export default async function RegisterPage() {
   if (await getSession()) redirect("/dashboard");
   const { t } = await getT();
+  const google = await googleProvider();
   return (
     <>
       <h1 className="text-2xl font-semibold tracking-tight">{t.auth.registerTitle}</h1>
       <p className="mt-2 text-sm text-muted-foreground">{t.auth.registerSubtitle}</p>
       <div className="mt-8">
         {registrationOpen() ? (
-          <RegisterForm />
+          <>
+            {google && <GoogleButton label={t.auth.continueWithGoogle} divider={t.auth.orDivider} />}
+            <RegisterForm />
+          </>
         ) : (
           <Alert tone="info" title="Registration is by invitation">
             New accounts are currently opened by our sales team.{" "}

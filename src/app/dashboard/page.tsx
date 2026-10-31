@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, CheckCheck, CircleAlert, Clock, Megaphone, Percent, Send, Wallet, Receipt, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge } from "@/components/ui/badge";
+import { Badge, StatusBadge } from "@/components/ui/badge";
 import { Alert, Progress } from "@/components/ui/misc";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { StatusBreakdown } from "@/components/dashboard/status-breakdown";
@@ -84,16 +84,41 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         <DateRangeFilter current={range.key} />
       </div>
 
-      <section aria-label="Key metrics" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        {balance && (
+      {balance && (
+        <section aria-label="Balance and SMS quantity" className="mb-4 grid gap-4 md:grid-cols-2">
           <StatsCard
-            label="Available balance"
+            label="Current balance"
             value={formatBDT(balance.balance.toString(), locale)}
             icon={Wallet}
             tone="accent"
-            hint={`≈ ${formatNumber(balance.credits, locale)} SMS credits (non-masking, 1 segment)`}
+            hint={`${balance.planName} plan · ${formatBDT(balance.rate.toString(), locale)} per non-masking SMS`}
           />
-        )}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle>SMS Quantity</CardTitle>
+              <CardDescription>What your balance can send, counting single-part English messages. Bangla and long messages use more.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <dl className="grid grid-cols-2 divide-x divide-border rounded-md border border-border text-center">
+                <div className="p-3">
+                  <dt>
+                    <Badge className="bg-destructive text-destructive-foreground">Masking</Badge>
+                  </dt>
+                  <dd className="mt-2 text-xl font-semibold tabular">{formatNumber(balance.maskingCredits, locale)}</dd>
+                </div>
+                <div className="p-3">
+                  <dt>
+                    <Badge className="bg-primary text-primary-foreground">Non-Mask</Badge>
+                  </dt>
+                  <dd className="mt-2 text-xl font-semibold tabular">{formatNumber(balance.credits, locale)}</dd>
+                </div>
+              </dl>
+            </CardContent>
+          </Card>
+        </section>
+      )}
+
+      <section aria-label="Key metrics" className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatsCard label="Total SMS sent" value={formatNumber(totals.total, locale)} icon={Send} hint={`${formatNumber(totals.segments, locale)} segments`} />
         <StatsCard label="Delivered" value={formatNumber(totals.delivered, locale)} icon={CheckCheck} tone="success" hint="Final delivery reports" />
         <StatsCard label="Failed" value={formatNumber(totals.failed, locale)} icon={CircleAlert} tone="danger" hint="Failed, rejected or expired" />
