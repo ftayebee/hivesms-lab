@@ -41,6 +41,9 @@ const nextConfig: NextConfig = {
   typescript: { tsconfigPath: "tsconfig.build.json" },
   serverExternalPackages: ["pino", "pino-pretty", "@node-rs/argon2", "mariadb"],
   experimental: {
+    // Hostinger's build reports dozens of CPUs but caps threads, so the default worker count aborts
+    // with "OS can't spawn worker thread".
+    cpus: 2,
     optimizePackageImports: ["lucide-react", "recharts"],
     // CSV imports (10 MB) and sender ID documents (3 × 5 MB) are uploaded through server actions.
     serverActions: { bodySizeLimit: "16mb" },

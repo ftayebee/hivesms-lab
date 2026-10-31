@@ -1,7 +1,10 @@
 <?php
 
 use App\Exceptions\AppException;
+use App\Models\CreditPackage;
+use App\Models\PricingPlan;
 use App\Services\Admin\StaffService;
+use App\Services\Auth\OrganizationProvisioner;
 use App\Services\Messaging\WorkerService;
 use App\Services\Platform\SchemaInspector;
 use Illuminate\Support\Facades\Artisan;
@@ -192,3 +195,37 @@ Artisan::command('platform:bootstrap-owner {email : the owner\'s e-mail address}
 
     return 0;
 })->purpose('One-time creation/promotion of the first platform owner (super admin), with explicit confirmation');
+
+/*
+| Fills an empty database (port of scripts/bootstrap.ts). Safe to run again: existing plans are left
+| as they are, and packages are only created when there are none, so Admin → Pricing edits survive.
+*/
+Artisan::command('platform:bootstrap-catalog', function (OrganizationProvisioner $provisioner) {
+    $provisioner->ensurePermissionCatalogue();
+
+    $plans = [
+        ['key' => 'starter', 'name' => 'Starter', 'description' => 'For small teams sending notifications and occasional campaigns.', 'minRechargeAmount' => 500, 'transactionalNonMasking' => 0.4, 'transactionalMasking' => 0.6, 'promotionalNonMasking' => 0.4, 'promotionalMasking' => 0.6, 'features' => ['Dashboard and REST API', 'Contacts, groups and templates', 'Delivery reports', 'Email support'], 'isCustom' => false, 'isDefault' => true, 'highlighted' => false, 'sortOrder' => 1],
+        ['key' => 'business', 'name' => 'Business', 'description' => 'For growing businesses with regular campaigns and OTP traffic.', 'minRechargeAmount' => 10000, 'transactionalNonMasking' => 0.35, 'transactionalMasking' => 0.55, 'promotionalNonMasking' => 0.35, 'promotionalMasking' => 0.55, 'features' => ['Everything in Starter', 'Team roles and permissions', 'Webhooks for delivery reports', 'Priority ticket handling'], 'isCustom' => false, 'isDefault' => false, 'highlighted' => true, 'sortOrder' => 2],
+        ['key' => 'enterprise', 'name' => 'Enterprise', 'description' => 'For high-volume senders that need custom terms and routing.', 'minRechargeAmount' => 100000, 'transactionalNonMasking' => 0.3, 'transactionalMasking' => 0.5, 'promotionalNonMasking' => 0.3, 'promotionalMasking' => 0.5, 'features' => ['Everything in Business', 'Custom rates and limits', 'Invoice billing on request', 'Named account contact'], 'isCustom' => true, 'isDefault' => false, 'highlighted' => false, 'sortOrder' => 3],
+    ];
+    $created = 0;
+    foreach ($plans as $plan) {
+        if (! PricingPlan::query()->where('key', $plan['key'])->exists()) {
+            PricingPlan::query()->forceCreate($plan);
+            $created++;
+        }
+    }
+    $this->info("Pricing plans: {$created} created.");
+
+    if (CreditPackage::query()->exists()) {
+        $this->info('Credit packages: already configured.');
+
+        return 0;
+    }
+    foreach ([['BDT 500', 500, 0], ['BDT 2,000', 2000, 0], ['BDT 5,000', 5000, 2], ['BDT 10,000', 10000, 3], ['BDT 25,000', 25000, 5]] as $i => [$name, $amount, $bonus]) {
+        CreditPackage::query()->forceCreate(['name' => $name, 'amount' => $amount, 'bonusPercent' => $bonus, 'sortOrder' => $i + 1]);
+    }
+    $this->info('Credit packages: 5 created.');
+
+    return 0;
+})->purpose('Create the permission catalogue, example pricing plans and credit packages on an empty database');
