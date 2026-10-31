@@ -2,7 +2,8 @@ import Link from "next/link";
 import { ArrowRight, CheckCheck, CircleAlert, Clock, Megaphone, Percent, Send, Wallet, Receipt, Coins } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge, StatusBadge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/ui/badge";
+import { SmsQuantity } from "@/components/dashboard/sms-quantity";
 import { Alert, Progress } from "@/components/ui/misc";
 import { StatsCard } from "@/components/dashboard/stats-card";
 import { StatusBreakdown } from "@/components/dashboard/status-breakdown";
@@ -99,20 +100,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
               <CardDescription>What your balance can send, counting single-part English messages. Bangla and long messages use more.</CardDescription>
             </CardHeader>
             <CardContent>
-              <dl className="grid grid-cols-2 divide-x divide-border rounded-md border border-border text-center">
-                <div className="p-3">
-                  <dt>
-                    <Badge className="bg-destructive text-destructive-foreground">Masking</Badge>
-                  </dt>
-                  <dd className="mt-2 text-xl font-semibold tabular">{formatNumber(balance.maskingCredits, locale)}</dd>
-                </div>
-                <div className="p-3">
-                  <dt>
-                    <Badge className="bg-primary text-primary-foreground">Non-Mask</Badge>
-                  </dt>
-                  <dd className="mt-2 text-xl font-semibold tabular">{formatNumber(balance.credits, locale)}</dd>
-                </div>
-              </dl>
+              <SmsQuantity masking={formatNumber(balance.maskingCredits, locale)} nonMasking={formatNumber(balance.credits, locale)} />
             </CardContent>
           </Card>
         </section>

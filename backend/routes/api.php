@@ -341,6 +341,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
         Route::get('dashboard', [AdminFinanceController::class, 'dashboard'])->middleware('platform:admin:access')->name('dashboard');
         Route::middleware('platform:admin:finance:read')->group(function (): void {
             Route::get('finance/summary', [AdminFinanceController::class, 'summary'])->name('finance.summary');
+            Route::get('finance/provider-balance', [AdminFinanceController::class, 'providerBalance'])->name('finance.provider-balance');
             Route::get('finance/transactions', [AdminFinanceController::class, 'transactions'])->name('finance.transactions');
             Route::get('finance/margins', [AdminFinanceController::class, 'margins'])->name('finance.margins');
             Route::get('finance/provider-costs', [AdminFinanceController::class, 'providerCosts'])->name('finance.costs');

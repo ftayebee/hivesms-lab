@@ -22,13 +22,15 @@ use Illuminate\Support\Facades\Log;
  * deliberately invalid key: {"response":[{"status":106,"id":165804,"msisdn":"8801700000000"}]}.
  * A failed send still carries an id, so only status 0 means accepted.
  *
- * Not offered by the documented API, so not implemented: delivery reports, inbound SMS and balance.
+ * Not offered by the documented API, so not implemented: delivery reports and inbound SMS.
  *
  * verified() stays false until the checklist in docs/05-integrations.md passes with a real key.
  */
 class AutomasSmsProvider extends BaseSmsProvider
 {
     private const SEND_URL = 'https://api.automas.com.bd/smsapiv3';
+
+    private const BALANCE_URL = 'https://api.automas.com.bd/getbalancev3';
 
     private const UNICODE = '8';
 
@@ -176,9 +178,27 @@ class AutomasSmsProvider extends BaseSmsProvider
         return new DeliveryStatus('UNKNOWN');
     }
 
+    /** Answers {"response":"10000.0"}. The URL holds the key, so errors are logged without their message. */
     public function balance(): ?array
     {
-        return null;
+        if ($this->apiKey === '') {
+            return null;
+        }
+        try {
+            $res = Http::acceptJson()->connectTimeout(3)->timeout(5)->get(self::BALANCE_URL, ['apikey' => $this->apiKey]);
+        } catch (\Throwable $e) {
+            Log::warning('provider balance request failed', ['provider' => $this->key(), 'error' => $e::class]);
+
+            return null;
+        }
+        $amount = $res->successful() ? $res->json('response') : null;
+        if (! is_numeric($amount)) {
+            Log::warning('provider balance unreadable', ['provider' => $this->key(), 'status' => $res->status()]);
+
+            return null;
+        }
+
+        return ['amount' => (float) $amount, 'currency' => 'BDT', 'unit' => 'BDT'];
     }
 
     /** Automas documents no webhooks, so nothing can be authenticated: every request is refused. */
