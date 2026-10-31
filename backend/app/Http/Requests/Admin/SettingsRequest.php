@@ -37,7 +37,7 @@ class SettingsRequest extends ApiRequest
                 'optOutKeywords' => ['required', 'string', 'max:500'],
             ],
             'sms-provider' => [
-                'provider' => ['required', 'in:mock,http'], 'url' => ['nullable', 'string', 'max:500'],
+                'provider' => ['required', 'in:mock,http,automas'], 'url' => ['nullable', 'string', 'max:500'],
                 'apiKey' => ['nullable', 'string', 'max:500'], 'apiSecret' => ['nullable', 'string', 'max:500'], 'webhookSecret' => ['nullable', 'string', 'max:500'],
                 'clearSecrets' => ['boolean'],
                 'mapTo' => ['nullable', 'string', 'max:40'], 'mapMessage' => ['nullable', 'string', 'max:40'], 'mapSenderId' => ['nullable', 'string', 'max:40'], 'mapApiKey' => ['nullable', 'string', 'max:40'],

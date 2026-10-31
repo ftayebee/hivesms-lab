@@ -239,6 +239,9 @@ class DispatcherService
             return ['checked' => 0, 'updated' => 0]; // e.g. mock in production: never fake deliveries
         }
         $provider = $this->providers->sendingProvider();
+        if (! $provider->hasDeliveryReports()) {
+            return ['checked' => 0, 'updated' => 0]; // polling would only expire accepted messages at 72 h
+        }
         $pollAfterSeconds = $provider->key() === 'mock' ? 3 : 300;
         $candidates = Message::query()
             ->where('status', 'SUBMITTED')

@@ -16,6 +16,9 @@ interface SmsProviderInterface
     /** False for scaffolding adapters that still need provider-specific verification. */
     public function verified(): bool;
 
+    /** False when the gateway offers no reports at all: messages stay SUBMITTED and are never polled. */
+    public function hasDeliveryReports(): bool;
+
     public function send(SendSmsInput $input): SendSmsResult;
 
     /**

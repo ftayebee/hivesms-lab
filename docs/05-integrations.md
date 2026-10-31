@@ -80,6 +80,10 @@ never report `DELIVERED` unless the operator actually confirmed delivery.
 Set `SMS_PROVIDER=automas`, `SMS_PROVIDER_API_KEY` and `SMS_DEFAULT_SENDER_ID`, or use Admin → Settings.
 The endpoint is fixed, so `SMS_PROVIDER_URL` is ignored.
 
+The Laravel API has the same adapter in `backend/app/Services/Sms/Providers/AutomasSmsProvider.php`.
+There, a timeout or other unconfirmed send is closed and refunded instead of being sent again.
+Admin settings override the env value, so an existing `sms.provider` setting must be changed too.
+
 - **Sender IDs.** Automas rejects any sender ID not approved on your Automas account (status 102),
   and the message is refunded. Approve a customer's sender ID at Automas before approving it here.
 - **IP allowlist.** If your account restricts API access by IP, allow your server's outgoing IP.

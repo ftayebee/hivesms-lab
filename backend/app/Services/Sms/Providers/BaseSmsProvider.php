@@ -25,6 +25,11 @@ abstract class BaseSmsProvider implements SmsProviderInterface
         return preg_match('/^\+?\d{6,15}$/', $senderId) ? ['valid' => true] : ['valid' => false, 'reason' => 'Non-masking sender IDs are phone numbers.'];
     }
 
+    public function hasDeliveryReports(): bool
+    {
+        return true;
+    }
+
     public function sendBulk(array $inputs): array
     {
         return array_map(fn ($i) => $this->send($i), $inputs);

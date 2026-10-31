@@ -57,10 +57,13 @@ class ReadinessService
             if ($prod && $p->key() === 'http' && ($settings->smsProviderSettings()['url'] === '' || $settings->secret('sms.provider.apiKey', (string) config('smsflow.sms.provider_api_key')) === '')) {
                 $fail();
             }
+            if ($prod && $p->key() === 'automas' && $settings->secret('sms.provider.apiKey', (string) config('smsflow.sms.provider_api_key')) === '') {
+                $fail();
+            }
 
             return $p->verified() ? 'ok' : 'ok (adapter not verified against the provider)';
         });
-        $run('smsWebhookSecret', fn () => ! $prod || $settings->secret('sms.provider.webhookSecret', (string) config('smsflow.sms.provider_webhook_secret')) !== '' ? 'ok' : $fail());
+        $run('smsWebhookSecret', fn () => ! $prod || ! $providers->provider()->hasDeliveryReports() || $settings->secret('sms.provider.webhookSecret', (string) config('smsflow.sms.provider_webhook_secret')) !== '' ? 'ok' : $fail());
         $run('mockPaymentsOff', fn () => ! $prod || ! config('smsflow.features.allow_mock_payments') ? 'ok' : $fail());
         $run('mailer', fn () => ! $prod || ! in_array(config('mail.default'), ['log', 'array'], true) ? 'ok' : $fail());
         $run('sessionDriver', fn () => config('session.driver') !== 'database' ? 'ok' : $fail()); // `sessions` belongs to the app

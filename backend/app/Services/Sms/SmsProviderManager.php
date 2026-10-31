@@ -4,6 +4,7 @@ namespace App\Services\Sms;
 
 use App\Exceptions\AppException;
 use App\Services\Platform\SettingsService;
+use App\Services\Sms\Providers\AutomasSmsProvider;
 use App\Services\Sms\Providers\HttpSmsProvider;
 use App\Services\Sms\Providers\MockSmsProvider;
 use App\Support\ErrorCode;
@@ -17,6 +18,7 @@ class SmsProviderManager
     public const OPTIONS = [
         'mock' => 'Mock (local simulation, no real SMS)',
         'http' => 'Generic HTTP gateway (requires provider-specific review)',
+        'automas' => 'Automas Technologies (no delivery reports)',
     ];
 
     /** @var array<string, SmsProviderInterface> test overrides */
@@ -78,6 +80,10 @@ class SmsProviderManager
                 apiSecret: $this->settings->secret('sms.provider.apiSecret', (string) config('smsflow.sms.provider_api_secret')),
                 webhookSecret: $webhookSecret,
                 mapping: $cfg['mapping'],
+                timeoutSeconds: (int) config('smsflow.sms.provider_timeout_seconds'),
+            ),
+            'automas' => new AutomasSmsProvider(
+                apiKey: $this->settings->secret('sms.provider.apiKey', (string) config('smsflow.sms.provider_api_key')),
                 timeoutSeconds: (int) config('smsflow.sms.provider_timeout_seconds'),
             ),
             'mock' => new MockSmsProvider($webhookSecret),
