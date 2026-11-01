@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\Account\ProfileController;
 use App\Http\Controllers\Api\V1\Account\TeamController;
 use App\Http\Controllers\Api\V1\Admin\AdminCustomerController;
+use App\Http\Controllers\Api\V1\Admin\AdminCustomerPricingController;
 use App\Http\Controllers\Api\V1\Admin\AdminExportController;
 use App\Http\Controllers\Api\V1\Admin\AdminFinanceController;
 use App\Http\Controllers\Api\V1\Admin\AdminPlatformController;
@@ -298,12 +299,17 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
             Route::get('customers/{id}', [AdminCustomerController::class, 'show'])->name('customers.show');
             Route::get('customers/{id}/usage', [AdminUsageController::class, 'show'])->name('customers.usage');
             Route::get('usage', [AdminUsageController::class, 'index'])->name('usage');
+            Route::get('customers/{id}/pricing', [AdminCustomerPricingController::class, 'show'])->name('customers.pricing');
             Route::get('leads', [AdminPlatformController::class, 'leads'])->name('leads');
             Route::put('leads/{id}', [AdminPlatformController::class, 'updateLead'])->name('leads.update');
         });
         Route::middleware('platform:admin:customers:manage')->group(function (): void {
             Route::put('customers/{id}/controls', [AdminCustomerController::class, 'updateControls'])->name('customers.controls');
             Route::post('customers/{id}/status', [AdminCustomerController::class, 'status'])->name('customers.status');
+        });
+        Route::middleware('platform:admin:pricing:customer')->group(function (): void {
+            Route::put('customers/{id}/pricing', [AdminCustomerPricingController::class, 'update'])->name('customers.pricing.update');
+            Route::post('customers/{id}/pricing/reset', [AdminCustomerPricingController::class, 'reset'])->name('customers.pricing.reset');
         });
         // Money-moving: SUPER_ADMIN only, password re-confirmation and idempotency key (AdminFinanceController).
         Route::post('customers/{id}/wallet-adjustments', [AdminFinanceController::class, 'adjustWallet'])->middleware('platform:admin:wallet:adjust')->name('customers.wallet');

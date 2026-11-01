@@ -60,7 +60,8 @@ class SmsCostCalculator
         }
 
         return PricingPlan::query()->where('isDefault', true)->where('active', true)->first()
-            ?? PricingPlan::query()->where('active', true)->orderBy('sortOrder')->first()
+            // Another customer's private plan must never become anyone's fallback.
+            ?? PricingPlan::query()->where('active', true)->where('isPublic', true)->orderBy('sortOrder')->first()
             ?? throw new RuntimeException('No active pricing plan configured. Seed the database or create a plan in Admin → Pricing.');
     }
 }

@@ -16,8 +16,8 @@ import { plansForControls } from "@/features/admin/page-data";
 import { laravelPage } from "@/lib/laravel-api";
 import { formatBDT, formatDate, formatDateTime, formatNumber, formatRelative } from "@/lib/format";
 import { getOrganizationDetail } from "@/features/admin/service";
-import { adjustWalletAction, sendPasswordResetAction, setOrgStatusAction, updateOrgControlsAction } from "@/features/admin/actions";
-import { customerExtras, customerUsage, superAdminAvailable } from "@/features/admin/super-admin";
+import { adjustWalletAction, resetCustomerPricingAction, saveCustomerPricingAction, sendPasswordResetAction, setOrgStatusAction, updateOrgControlsAction } from "@/features/admin/actions";
+import { customerExtras, customerPricing, customerUsage, providerBalance, superAdminAvailable } from "@/features/admin/super-admin";
 import { UsageChart } from "@/components/dashboard/charts";
 
 export const metadata = { title: "Customer" };
@@ -38,6 +38,9 @@ export default async function AdminCustomerPage({ params }: PageProps<"/admin/cu
   const canAdjust = platformCan(session.user.platformRole, "admin:wallet:adjust");
   const extras = superAdminAvailable() ? await laravelPage(() => customerExtras(id)) : null;
   const usage = superAdminAvailable() ? await laravelPage(() => customerUsage(id, { range: "30d" })) : null;
+  const pricing = superAdminAvailable() ? await laravelPage(() => customerPricing(id)) : null;
+  const canPrice = platformCan(session.user.platformRole, "admin:pricing:customer");
+  const gateway = canPrice && superAdminAvailable() ? await laravelPage(() => providerBalance()) : null;
   // One key per rendered form: a double submit or retry applies the adjustment once.
   const adjustmentKey = `adj_${randomUUID().replaceAll("-", "")}`;
 
@@ -122,6 +125,7 @@ export default async function AdminCustomerPage({ params }: PageProps<"/admin/cu
                 <Field label="Pricing plan">
                   <NativeSelect name="pricingPlanId" defaultValue={org.pricingPlanId ?? ""}>
                     <option value="">Default plan</option>
+                    {pricing?.custom && org.pricingPlanId && <option value={org.pricingPlanId}>{pricing.planName}</option>}
                     {plans.map((p) => (
                       <option key={p.id} value={p.id}>
                         {p.name}
@@ -215,6 +219,51 @@ export default async function AdminCustomerPage({ params }: PageProps<"/admin/cu
           </ul>
         </Card>
       </div>
+
+      {pricing && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>
+              SMS prices {pricing.custom ? <Badge tone="accent">Custom</Badge> : <Badge tone="outline">{pricing.planName}</Badge>}
+            </CardTitle>
+            <CardDescription>
+              {formatBDT(pricing.maskingRate, "en", { decimals: 4 })} masking · {formatBDT(pricing.nonMaskingRate, "en", { decimals: 4 })} non-masking, per SMS segment.
+              {gateway?.maskingRate && ` Your gateway charges ${formatBDT(gateway.maskingRate, "en", { decimals: 4 })} and ${formatBDT(gateway.nonMaskingRate ?? "0", "en", { decimals: 4 })}.`}
+            </CardDescription>
+          </CardHeader>
+          {canPrice && (
+            <CardContent className="grid gap-8 lg:grid-cols-2">
+              <AdminForm action={saveCustomerPricingAction} className="grid gap-3 sm:grid-cols-2" submitLabel="Save prices">
+                <input type="hidden" name="orgId" value={org.id} />
+                <Field label="Masking price (BDT)" required>
+                  <Input name="maskingRate" inputMode="decimal" defaultValue={pricing.maskingRate} />
+                </Field>
+                <Field label="Non-masking price (BDT)" required>
+                  <Input name="nonMaskingRate" inputMode="decimal" defaultValue={pricing.nonMaskingRate} />
+                </Field>
+                <Field label="Reason" required hint="Kept in the audit log.">
+                  <Input name="reason" maxLength={500} />
+                </Field>
+                <Field label="Your current password" required>
+                  <PasswordInput name="currentPassword" autoComplete="current-password" maxLength={200} />
+                </Field>
+              </AdminForm>
+              {pricing.custom && (
+                <AdminForm action={resetCustomerPricingAction} className="grid gap-3 sm:grid-cols-2" submitLabel="Remove custom prices">
+                  <input type="hidden" name="orgId" value={org.id} />
+                  <p className="text-sm text-muted-foreground sm:col-span-2">Moves this customer back to the default plan. You can then choose another plan in the account controls.</p>
+                  <Field label="Reason" required>
+                    <Input name="reason" maxLength={500} />
+                  </Field>
+                  <Field label="Your current password" required>
+                    <PasswordInput name="currentPassword" autoComplete="off" maxLength={200} />
+                  </Field>
+                </AdminForm>
+              )}
+            </CardContent>
+          )}
+        </Card>
+      )}
 
       {usage && (
         <Card className="mt-6">

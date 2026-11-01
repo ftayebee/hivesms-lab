@@ -45,9 +45,13 @@ class PlatformDashboardService
             FROM organizations WHERE deletedAt IS NULL", [self::ts($range->from), self::ts($range->to)]);
         $users = DB::selectOne("SELECT COUNT(*) AS total, COUNT(CASE WHEN platformRole = 'USER' THEN 1 END) AS customers,
                 COUNT(CASE WHEN platformRole <> 'USER' AND status = 'ACTIVE' THEN 1 END) AS staff FROM users WHERE deletedAt IS NULL");
-        $plans = DB::select('SELECT p.id, COALESCE(p.name, ?) AS name, p.active, COUNT(o.id) AS organizations
+        // Customers with private prices count as one line rather than one line each.
+        $custom = "p.key LIKE 'customer-%'";
+        $plans = DB::select("SELECT CASE WHEN {$custom} THEN NULL ELSE p.id END AS id,
+                CASE WHEN {$custom} THEN 'Custom pricing' ELSE COALESCE(p.name, ?) END AS name,
+                CASE WHEN {$custom} THEN 1 ELSE p.active END AS active, COUNT(o.id) AS organizations
             FROM organizations o LEFT JOIN pricing_plans p ON p.id = o.pricingPlanId WHERE o.deletedAt IS NULL
-            GROUP BY p.id, p.name, p.active ORDER BY organizations DESC', ['Default plan']);
+            GROUP BY 1, 2, 3 ORDER BY organizations DESC", ['Default plan']);
 
         $sms = fn (\DateTimeInterface $from, \DateTimeInterface $to) => (array) DB::selectOne("SELECT COUNT(*) AS total, COALESCE(SUM(segments), 0) AS segments,
                 COUNT(CASE WHEN status = 'DELIVERED' THEN 1 END) AS delivered,

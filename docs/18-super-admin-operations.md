@@ -68,6 +68,7 @@ identical in `backend/app/Auth/Permissions.php` and `src/lib/auth/permissions.ts
 | **admin:health:read** — new | | ✓ | ✓ |
 | **admin:wallet:adjust** — new (was billing:manage, ADMIN lost it) | | | ✓ |
 | **admin:payments:refund** — new | | | ✓ |
+| **admin:pricing:customer** (one customer's own SMS prices) | | | ✓ |
 | **admin:costs:manage** — new | | | ✓ |
 | admin:users:manage (staff), admin:settings:manage | | | ✓ |
 

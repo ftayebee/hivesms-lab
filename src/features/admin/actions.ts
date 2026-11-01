@@ -42,7 +42,7 @@ import {
   smsPolicySchema,
   smsProviderSchema,
 } from "./config";
-import { inviteStaff, providerCostSchema, refundPayment, saveProviderCosts, sendPasswordReset, staffInviteSchema } from "./super-admin";
+import { customerPricingResetSchema, customerPricingSchema, inviteStaff, providerCostSchema, resetCustomerPricing, saveCustomerPricing, refundPayment, saveProviderCosts, sendPasswordReset, staffInviteSchema } from "./super-admin";
 
 const uuid = z.uuid();
 const reasonText = z.string().trim().max(500).optional().transform((v) => v || null);
@@ -174,6 +174,24 @@ export async function saveProviderCostsAction(_p: unknown, fd: FormData): Promis
   return adminAction("admin:costs:manage", async () => {
     await saveProviderCosts(providerCostSchema.parse(raw));
     return ok("Provider costs saved. Margin figures are estimates based on these rates.", "/admin/costs");
+  }, raw);
+}
+
+export async function saveCustomerPricingAction(_p: unknown, fd: FormData): Promise<ActionResult> {
+  const raw = formToObject(fd);
+  return adminAction("admin:pricing:customer", async () => {
+    const id = uuid.parse(raw.orgId);
+    await saveCustomerPricing(id, customerPricingSchema.parse(raw));
+    return ok("Prices saved. They apply to messages sent from now on.", `/admin/customers/${id}`);
+  }, raw);
+}
+
+export async function resetCustomerPricingAction(_p: unknown, fd: FormData): Promise<ActionResult> {
+  const raw = formToObject(fd);
+  return adminAction("admin:pricing:customer", async () => {
+    const id = uuid.parse(raw.orgId);
+    await resetCustomerPricing(id, customerPricingResetSchema.parse(raw));
+    return ok("Custom prices removed. This customer is back on the default plan.", `/admin/customers/${id}`);
   }, raw);
 }
 

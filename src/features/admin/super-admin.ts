@@ -200,6 +200,38 @@ export async function customerExtras(id: string) {
   };
 }
 
+// ─── Customer-specific prices ───
+
+const smsPrice = z.string().trim().regex(/^\d{1,3}(\.\d{1,4})?$/, "Enter a price with up to 4 decimals.");
+const priceChange = {
+  reason: z.string().trim().min(5, "Explain the change (at least 5 characters).").max(500),
+  currentPassword: z.string().min(1, "Confirm with your current password.").max(200),
+};
+export const customerPricingSchema = z.object({ maskingRate: smsPrice, nonMaskingRate: smsPrice, ...priceChange });
+export const customerPricingResetSchema = z.object(priceChange);
+
+export interface CustomerPricing {
+  custom: boolean;
+  planName: string;
+  maskingRate: string;
+  nonMaskingRate: string;
+}
+
+export async function customerPricing(id: string) {
+  requireLaravel();
+  return laravelData<CustomerPricing>(`admin/customers/${enc(id)}/pricing`);
+}
+
+export async function saveCustomerPricing(id: string, input: z.infer<typeof customerPricingSchema>) {
+  requireLaravel();
+  await laravel.put(`admin/customers/${enc(id)}/pricing`, input);
+}
+
+export async function resetCustomerPricing(id: string, input: z.infer<typeof customerPricingResetSchema>) {
+  requireLaravel();
+  await laravel.post(`admin/customers/${enc(id)}/pricing/reset`, input);
+}
+
 // ─── SMS gateway balance ───
 
 export interface ProviderBalance {
