@@ -165,7 +165,8 @@ class AdminService
             throw new AppException(ErrorCode::VALIDATION_ERROR, 'The monthly limit must be at least the daily limit.', ['field' => 'monthlySendLimit']);
         }
         $snapshot = ['daily' => $before->dailySendLimit, 'monthly' => $before->monthlySendLimit, 'review' => $before->requireCampaignReview, 'plan' => $before->pricingPlanId];
-        if ($input['pricingPlanId'] && ! PricingPlan::query()->whereKey($input['pricingPlanId'])->exists()) {
+        $planKey = $input['pricingPlanId'] ? PricingPlan::query()->whereKey($input['pricingPlanId'])->value('key') : null;
+        if ($input['pricingPlanId'] && ($planKey === null || (CustomerPricingService::isPrivateKey($planKey) && $planKey !== CustomerPricingService::KEY_PREFIX.$id))) {
             throw new AppException(ErrorCode::VALIDATION_ERROR, 'Pricing plan not found.', ['field' => 'pricingPlanId']);
         }
         $before->forceFill($input)->save();

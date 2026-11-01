@@ -11,6 +11,7 @@ use App\Models\BlocklistEntry;
 use App\Models\CreditPackage;
 use App\Models\PricingPlan;
 use App\Services\Admin\AdminConfigService;
+use App\Services\Admin\CustomerPricingService;
 use App\Services\Platform\SettingsService;
 use App\Services\Sms\SmsProviderManager;
 use App\Support\Dhaka;
@@ -25,7 +26,7 @@ class AdminSettingsController extends ApiController
 
     public function plans(Request $request): JsonResponse
     {
-        return $this->collection($request, PricingPlanResource::class, PricingPlan::query()->orderBy('sortOrder')->get());
+        return $this->collection($request, PricingPlanResource::class, PricingPlan::query()->where('key', 'not like', CustomerPricingService::KEY_PREFIX.'%')->orderBy('sortOrder')->get());
     }
 
     public function storePlan(PlanRequest $request): JsonResponse

@@ -91,6 +91,7 @@ final class Permissions
         'admin:wallet:adjust' => ['SUPER_ADMIN'],
         'admin:payments:refund' => ['SUPER_ADMIN'],
         'admin:costs:manage' => ['SUPER_ADMIN'],
+        'admin:pricing:customer' => ['SUPER_ADMIN'],
     ];
 
     /** @param list<string>|string $required */

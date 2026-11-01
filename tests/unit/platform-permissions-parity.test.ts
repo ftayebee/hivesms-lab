@@ -25,7 +25,7 @@ describe("platform permissions", () => {
   });
 
   it("never give customers or support staff money, pricing-cost or staff powers", () => {
-    for (const p of ["admin:wallet:adjust", "admin:payments:refund", "admin:costs:manage", "admin:users:manage", "admin:settings:manage", "admin:finance:read", "admin:billing:manage", "admin:reports:export"] as const) {
+    for (const p of ["admin:wallet:adjust", "admin:payments:refund", "admin:costs:manage", "admin:pricing:customer", "admin:users:manage", "admin:settings:manage", "admin:finance:read", "admin:billing:manage", "admin:reports:export"] as const) {
       expect(platformCan("USER", p), p).toBe(false);
       expect(platformCan("SUPPORT", p), p).toBe(false);
     }
@@ -33,7 +33,7 @@ describe("platform permissions", () => {
   });
 
   it("keep money-moving and owner-level permissions for super admins only", () => {
-    for (const p of ["admin:wallet:adjust", "admin:payments:refund", "admin:costs:manage", "admin:users:manage", "admin:settings:manage"] as const) {
+    for (const p of ["admin:wallet:adjust", "admin:payments:refund", "admin:costs:manage", "admin:pricing:customer", "admin:users:manage", "admin:settings:manage"] as const) {
       expect(PLATFORM_PERMISSIONS[p]).toEqual(["SUPER_ADMIN"]);
     }
   });
