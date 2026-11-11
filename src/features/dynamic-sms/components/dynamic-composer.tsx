@@ -20,6 +20,8 @@ import { unknownTokens, type DynamicEstimate, type DynamicInput, type DynamicPre
 
 export interface DynamicComposerProps {
   senders: { value: string; label: string; isDefault: boolean }[];
+  /** The organization's saved templates (same list as Send SMS). */
+  templates: { id: string; name: string; body: string; smsType: "TRANSACTIONAL" | "PROMOTIONAL" }[];
   rules: SegmentationRules;
   balance: number;
   batchSizes: number[];
@@ -50,13 +52,13 @@ function Step({ n, title, done, children, description }: { n: number; title: str
   );
 }
 
-export function DynamicComposer({ senders, rules, balance, batchSizes, defaultBatchSize, maxRows }: DynamicComposerProps) {
+export function DynamicComposer({ senders, templates, rules, balance, batchSizes, defaultBatchSize, maxRows }: DynamicComposerProps) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [upload, setUpload] = useState<DynamicUpload | null>(null);
   const [recipientColumn, setRecipientColumn] = useState("");
-  const [senderColumn, setSenderColumn] = useState("");
+  const [templateId, setTemplateId] = useState("");
   const defaultSender = senders.find((s) => s.isDefault)?.value ?? senders[0]?.value ?? "";
   const [senderId, setSenderId] = useState(defaultSender);
   const [message, setMessage] = useState("");
@@ -76,16 +78,16 @@ export function DynamicComposer({ senders, rules, balance, batchSizes, defaultBa
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<"upload" | "preview" | "estimate" | "submit" | null>(null);
 
-  // Merge fields: every column except the recipient and sender-ID columns.
-  const fields = useMemo(() => (upload?.headers ?? []).filter((h) => h !== recipientColumn && h !== senderColumn), [upload, recipientColumn, senderColumn]);
+  // Merge fields: every column except the recipient column.
+  const fields = useMemo(() => (upload?.headers ?? []).filter((h) => h !== recipientColumn), [upload, recipientColumn]);
   const unknown = useMemo(() => unknownTokens(message, fields), [message, fields]);
-  const usesExcluded = unknown.some((u) => [recipientColumn, senderColumn].filter(Boolean).some((c) => c.toLowerCase() === u.toLowerCase()));
+  const usesExcluded = !!recipientColumn && unknown.some((u) => u.toLowerCase() === recipientColumn.toLowerCase());
 
   function input(extra: Partial<DynamicInput> = {}): DynamicInput {
     return {
       uploadId: upload!.id,
       recipientColumn,
-      senderColumn: senderColumn || null,
+      senderColumn: null,
       senderId,
       message,
       smsType,
@@ -119,7 +121,6 @@ export function DynamicComposer({ senders, rules, balance, batchSizes, defaultBa
         setErrors({});
         setUpload(r.data!);
         setRecipientColumn(r.data!.suggestedRecipientColumn ?? "");
-        setSenderColumn("");
         setPreview(null);
         setEstimate(null);
         toast.success(`${formatNumber(r.data!.rowCount)} rows read from ${r.data!.fileName}.`);
@@ -260,23 +261,13 @@ export function DynamicComposer({ senders, rules, balance, batchSizes, defaultBa
                 <NativeSelect value={recipientColumn} onChange={(e) => setRecipientColumn(e.target.value)}>
                   <option value="">Choose a column…</option>
                   {upload.headers.map((h) => (
-                    <option key={h} value={h} disabled={h === senderColumn}>
+                    <option key={h} value={h}>
                       {h}
                     </option>
                   ))}
                 </NativeSelect>
               </Field>
-              <Field label="Sender ID column" optional error={errors.senderColumn} hint="Each row must name a sender ID approved for your account. Empty cells use the sender below.">
-                <NativeSelect value={senderColumn} onChange={(e) => setSenderColumn(e.target.value)}>
-                  <option value="">None — use one sender ID</option>
-                  {upload.headers.map((h) => (
-                    <option key={h} value={h} disabled={h === recipientColumn}>
-                      {h}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </Field>
-              <Field label={senderColumn ? "Fallback sender ID" : "Sender ID"} required>
+              <Field label="Sender ID" required>
                 <NativeSelect value={senderId} onChange={(e) => setSenderId(e.target.value)}>
                   {senders.map((s) => (
                     <option key={s.value || "default"} value={s.value}>
@@ -300,6 +291,28 @@ export function DynamicComposer({ senders, rules, balance, batchSizes, defaultBa
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Campaign name" optional>
                 <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={120} placeholder="e.g. November dues reminder" />
+              </Field>
+              <Field label="Template" optional hint={templates.length ? "Loads the text and message type; edit the {{fields}} to match your columns." : "No saved templates yet."}>
+                <NativeSelect
+                  value={templateId}
+                  disabled={!templates.length}
+                  onChange={(e) => {
+                    setTemplateId(e.target.value);
+                    const t = templates.find((x) => x.id === e.target.value);
+                    if (t) {
+                      setMessage(t.body);
+                      setSmsType(t.smsType);
+                      setPreview(null);
+                    }
+                  }}
+                >
+                  <option value="">No template</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </NativeSelect>
               </Field>
               <fieldset>
                 <legend className="mb-2 text-sm font-medium">Message type</legend>
@@ -344,7 +357,7 @@ export function DynamicComposer({ senders, rules, balance, batchSizes, defaultBa
               <p className="mt-1 text-xs text-muted-foreground">Segments are counted per recipient after personalisation; longer values cost more.</p>
               {unknown.length > 0 && (
                 <p role="alert" className="mt-1 text-xs font-medium text-destructive">
-                  {usesExcluded ? "The recipient number and sender ID columns cannot be used in the message." : `Unknown field: ${unknown.map((u) => `{{${u}}}`).join(", ")}. Click a field above to insert it.`}
+                  {usesExcluded ? "The recipient number column cannot be used in the message." : `Unknown field: ${unknown.map((u) => `{{${u}}}`).join(", ")}. Click a field above to insert it.`}
                 </p>
               )}
               {errors.message && unknown.length === 0 && (
@@ -479,7 +492,7 @@ export function DynamicComposer({ senders, rules, balance, batchSizes, defaultBa
                 ["Duplicates", s ? formatNumber(s.duplicates) : "—"],
                 ["SMS segments", s ? formatNumber(s.segments) : "—"],
                 ["Estimated credits", s ? `${formatNumber(s.segments)} SMS` : "—"],
-                ["Sender ID", senderColumn ? `From “${senderColumn}”` : senderId || "Shared number"],
+                ["Sender ID", senderId || "Shared number"],
                 ["Batch size", `${batchSize}`],
               ].map(([k, v]) => (
                 <div key={k} className="flex justify-between gap-3">
@@ -518,7 +531,7 @@ export function DynamicComposer({ senders, rules, balance, batchSizes, defaultBa
                     ["Campaign", estimate.name],
                     ["Message type", estimate.messageType === "PROMOTIONAL" ? "Promotional" : "Transactional"],
                     ["Recipients", formatNumber(estimate.recipients)],
-                    ["Sender ID", estimate.senderColumn ? `Column “${estimate.senderColumn}” (fallback ${estimate.senderValue})` : estimate.senderValue],
+                    ["Sender ID", estimate.senderValue],
                     ["SMS segments", `${formatNumber(estimate.segments)} (max ${estimate.segmentsPerMessageMax} per SMS)`],
                     ["Batches", `${formatNumber(estimate.batches)} × ${estimate.batchSize}`],
                     ["Estimated cost", formatBDT(estimate.estimatedCost)],

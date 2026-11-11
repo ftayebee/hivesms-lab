@@ -27,16 +27,16 @@ Download the template from the page (**Download template**):
 
 - **Recipient phone number column** — required, chosen explicitly. Any Bangladeshi mobile format
   works (`017…`, `88017…`, `+88017…`); invalid numbers are skipped and counted.
-- **Sender ID column** — optional. Each row must name a sender ID **approved for your account**;
-  any other value skips that row. An empty cell uses the sender ID selected in the composer.
+- **Sender ID** — one approved sender ID for the whole campaign, chosen in the composer.
 - **Rows with a missing value** — *Skip those rows* (default) or *Stop: don't send the campaign*.
   A row is never sent with a blank where a value belongs.
 
-The recipient column and the sender-ID column are **not** available as message fields.
+The recipient column is **not** available as a message field.
 
 ## 3. Write the message
 
-Click a field chip to insert `{{Column Name}}` at the cursor:
+Pick a saved **Template** to load its text and message type (then adjust its `{{fields}}` to your
+columns), or click a field chip to insert `{{Column Name}}` at the cursor:
 
 ```
 Dear {{Retail Name}},

@@ -7,6 +7,7 @@ import { laravelEnabled } from "@/lib/laravel/flags";
 import type { SegmentationRules } from "@/lib/sms-segments";
 import { approvedSenderIds } from "@/features/sender-ids/service";
 import { DynamicComposer } from "@/features/dynamic-sms/components/dynamic-composer";
+import { composerTemplates } from "@/features/campaigns/composer";
 
 export const metadata = { title: "Dynamic SMS" };
 
@@ -22,7 +23,7 @@ export default async function DynamicSmsPage() {
   const { ctx, session, allowed } = await tenantWithPermission(["sms:send", "campaigns:write"]);
   if (!allowed) return <PermissionDenied permission="sms:send + campaigns:write" />;
 
-  const [config, senders] = await laravelPage(() => Promise.all([laravelData<ComposerConfig>("app/sms/composer"), approvedSenderIds(ctx.organizationId)]));
+  const [config, senders, templates] = await laravelPage(() => Promise.all([laravelData<ComposerConfig>("app/sms/composer"), approvedSenderIds(ctx.organizationId), composerTemplates(ctx)]));
   const platformSender = process.env.SMS_DEFAULT_SENDER_ID ?? "";
   const options = [
     ...senders.map((s) => ({ value: s.value, isDefault: s.isDefault, label: `${s.value} (${s.type === "MASKING" ? "masking" : "number"})${s.isDefault ? " · default" : ""}` })),
@@ -38,7 +39,7 @@ export default async function DynamicSmsPage() {
           Verify your email address to send messages. You can still upload and preview.
         </Alert>
       )}
-      <DynamicComposer senders={options} rules={config.segmentation} balance={Number(config.balance)} batchSizes={batching.allowed} defaultBatchSize={batching.default} maxRows={50_000} />
+      <DynamicComposer senders={options} templates={templates} rules={config.segmentation} balance={Number(config.balance)} batchSizes={batching.allowed} defaultBatchSize={batching.default} maxRows={50_000} />
     </>
   );
 }
