@@ -46,7 +46,33 @@ export interface SiteContentSettings {
   announcement: { enabled: boolean; text: string; href?: string };
 }
 
+/** Settings the Laravel API publishes at GET /public/policies (non-secret, customer-facing). */
+const LARAVEL_POLICY_KEYS = new Set(["sms.policy", "billing.policy"]);
+
+/**
+ * With the dashboard on Laravel (LARAVEL_FEATURES `auth`), this app's own database is not used and
+ * may be unreachable: policies come from Laravel, the single source of truth. Never from Prisma —
+ * a dead database here cost every request a 10 s pool timeout (slow Templates page).
+ */
+async function readFromLaravel<T>(key: string): Promise<T | undefined> {
+  if (!LARAVEL_POLICY_KEYS.has(key)) return undefined; // nothing else is read on this path
+  const hit = cache.get("laravel:policies");
+  let all = hit && Date.now() - hit.at < CACHE_TTL_MS ? (hit.value as Record<string, unknown> | undefined) : undefined;
+  if (!hit || Date.now() - hit.at >= CACHE_TTL_MS) {
+    try {
+      all = await laravelData<Record<string, unknown>>("public/policies", undefined, { auth: false, timeoutMs: 5_000 });
+    } catch (err) {
+      unstable_rethrow(err);
+      logger.warn({ err: (err as Error).message }, "policies unavailable from the API, using defaults");
+      all = undefined;
+    }
+    cache.set("laravel:policies", { value: all, at: Date.now() }); // failures are cached too
+  }
+  return all?.[key] as T | undefined;
+}
+
 async function readRaw<T>(key: string): Promise<T | undefined> {
+  if (laravelEnabled("auth")) return readFromLaravel<T>(key);
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < CACHE_TTL_MS) return hit.value as T | undefined;
   try {
@@ -55,8 +81,10 @@ async function readRaw<T>(key: string): Promise<T | undefined> {
     cache.set(key, { value, at: Date.now() });
     return value;
   } catch (err) {
-    // The database may be unreachable during a static build; fall back to defaults.
+    // The database may be unreachable (static build, outage): fall back to defaults, and remember
+    // the failure for CACHE_TTL_MS so every request does not wait for the pool timeout again.
     logger.warn({ err: (err as Error).message, key }, "settings read failed, using defaults");
+    cache.set(key, { value: undefined, at: Date.now() });
     return undefined;
   }
 }
@@ -154,6 +182,7 @@ async function siteContentFromLaravel(): Promise<Partial<SiteContentSettings> | 
     unstable_rethrow(err);
     // Public pages still render with the built-in contact details.
     logger.warn({ err: (err as Error).message }, "site content unavailable from the API, using defaults");
+    cache.set("laravel:site.content", { value: undefined, at: Date.now() }); // don't retry on every request
     return undefined;
   }
 }

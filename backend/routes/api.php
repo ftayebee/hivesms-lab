@@ -68,6 +68,7 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
     Route::prefix('public')->name('public.')->group(function (): void {
         Route::get('pricing', [PublicController::class, 'pricing'])->name('pricing');
         Route::get('site-content', [PublicController::class, 'siteContent'])->name('site');
+        Route::get('policies', [PublicController::class, 'policies'])->name('policies');
         Route::post('contact', [PublicController::class, 'contact'])->name('contact');
         Route::post('abuse-reports', [PublicController::class, 'abuse'])->name('abuse');
     });

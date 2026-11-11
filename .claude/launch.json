@@ -52,6 +52,21 @@
       }
     },
     {
+      "name": "prod-deaddb",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "start"],
+      "port": 3230,
+      "env": {
+        "PORT": "3230",
+        "APP_URL": "http://localhost:3230",
+        "LARAVEL_API_URL": "http://127.0.0.1:8001",
+        "LARAVEL_FEATURES": "all,dynamicSms,manualTopups,senderCatalog",
+        "DATABASE_URL": "mysql://nobody@10.255.255.1:3306/unreachable",
+        "WORKER_IN_PROCESS": "false",
+        "SMS_PROVIDER": "mock"
+      }
+    },
+    {
       "name": "admin-local",
       "runtimeExecutable": "npm",
       "runtimeArgs": [

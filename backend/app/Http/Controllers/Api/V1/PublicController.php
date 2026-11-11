@@ -30,6 +30,38 @@ class PublicController extends ApiController
         ]);
     }
 
+    /**
+     * GET /public/policies: the non-secret, customer-facing parts of sms.policy and billing.policy
+     * (segment sizes, quiet hours, opt-out text, recipient limits, VAT, top-up limits). The Next.js
+     * panel reads its settings here instead of from its own database. Nothing internal (review or
+     * retry tuning, provider details, secrets) is included.
+     */
+    public function policies(SettingsService $settings): JsonResponse
+    {
+        $sms = $settings->smsPolicy();
+        $billing = $settings->billingPolicy();
+
+        return $this->ok([
+            'sms.policy' => [
+                'segmentation' => $sms['segmentation'],
+                'promotionalQuietHours' => $sms['promotionalQuietHours'],
+                'promotionalOptOutText' => $sms['promotionalOptOutText'],
+                'appendOptOutText' => (bool) $sms['appendOptOutText'],
+                'optOutKeywords' => array_values((array) $sms['optOutKeywords']),
+                'maxBulkRecipients' => (int) $sms['maxBulkRecipients'],
+                'maxCampaignRecipients' => (int) $sms['maxCampaignRecipients'],
+            ],
+            'billing.policy' => [
+                'vatRatePercent' => $billing['vatRatePercent'],
+                'pricesExcludeVat' => (bool) $billing['pricesExcludeVat'],
+                'minimumTopUp' => $billing['minimumTopUp'],
+                'maximumTopUp' => $billing['maximumTopUp'],
+                'balanceValidityMonths' => $billing['balanceValidityMonths'],
+                'invoicePrefix' => $billing['invoicePrefix'],
+            ],
+        ]);
+    }
+
     public function siteContent(SettingsService $settings): JsonResponse
     {
         return $this->ok($settings->siteContent());
