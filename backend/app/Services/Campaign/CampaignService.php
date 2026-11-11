@@ -10,6 +10,7 @@ use App\Models\CampaignRecipient;
 use App\Models\ContactGroup;
 use App\Models\Message;
 use App\Models\Organization;
+use App\Models\SenderId;
 use App\Models\Template;
 use App\Models\User;
 use App\Services\Messaging\ComplianceService;
@@ -17,6 +18,7 @@ use App\Services\Messaging\DeliveryService;
 use App\Services\Messaging\RiskEvaluator;
 use App\Services\Messaging\SendService;
 use App\Services\Platform\AuditLogger;
+use App\Services\Platform\NotificationService;
 use App\Services\Platform\SettingsService;
 use App\Services\Sms\MessageSegmentCalculator;
 use App\Services\Sms\SmsProviderManager;
@@ -156,6 +158,20 @@ class CampaignService
             ?? throw new AppException(ErrorCode::VALIDATION_ERROR, 'Template not found.', ['field' => 'templateId']);
     }
 
+    /** Batch size chosen by the customer, limited to the sizes the platform allows. */
+    public function resolveBatchSize(?int $requested): int
+    {
+        $cfg = $this->settings->campaignProcessing();
+        if ($requested === null) {
+            return $cfg['defaultBatchSize'];
+        }
+        if (! in_array($requested, $cfg['allowedBatchSizes'], true)) {
+            throw new AppException(ErrorCode::VALIDATION_ERROR, 'Choose a batch size of '.implode(' or ', $cfg['allowedBatchSizes']).' messages.', ['field' => 'batchSize']);
+        }
+
+        return $requested;
+    }
+
     /** @return array<string, mixed> */
     private function validateForSend(TenantContext $ctx, array $input): array
     {
@@ -201,14 +217,14 @@ class CampaignService
         $org = Organization::query()->findOrFail($ctx->organizationId, ['id', 'requireCampaignReview', 'createdAt']);
         $risk = $this->risk->evaluate($input['message'], $input['smsType'], $est['included'], $org->createdAt->diffInSeconds(now()) / 86400);
         $reasons = $risk['reasons'];
+        // Per-account risk control set by staff (Admin → Customers → controls). Routine campaigns
+        // of other accounts are queued automatically: the old recipient-count review threshold
+        // (sms.policy.reviewThresholdRecipients) no longer holds campaigns.
         if ($org->requireCampaignReview && ($input['smsType'] === 'PROMOTIONAL' || $est['included'] > 50)) {
-            $reasons[] = "Your account's campaigns are reviewed before sending";
-        }
-        if ($est['included'] > $policy['reviewThresholdRecipients']) {
-            $reasons[] = 'More than '.number_format($policy['reviewThresholdRecipients']).' recipients';
+            $reasons[] = "Your account's campaigns get a safety check before sending";
         }
 
-        return ['seg' => $seg, 'sender' => $sender, 'audience' => $audience, 'est' => $est, 'scheduledAt' => $scheduledAt, 'reviewReasons' => $reasons, 'balance' => $this->wallet->balance($ctx->organizationId)];
+        return ['seg' => $seg, 'sender' => $sender, 'audience' => $audience, 'est' => $est, 'scheduledAt' => $scheduledAt, 'reviewReasons' => $reasons, 'balance' => $this->wallet->balance($ctx->organizationId), 'batchSize' => $this->resolveBatchSize($input['batchSize'] ?? null)];
     }
 
     /** @return array<string, mixed> */
@@ -232,6 +248,8 @@ class CampaignService
             'senderValue' => $v['sender']['value'],
             'senderType' => $v['sender']['type'],
             'scheduledAt' => Dhaka::iso($v['scheduledAt']),
+            'batchSize' => $v['batchSize'],
+            'batches' => (int) ceil($v['est']['included'] / max(1, $v['batchSize'])),
         ];
     }
 
@@ -269,6 +287,7 @@ class CampaignService
             'estimatedCost' => $v['est']['estimatedCost'],
             'recipientCount' => $v['est']['included'],
             'reviewNote' => $v['reviewReasons'] ? implode('; ', $v['reviewReasons']) : null,
+            'batchSize' => $v['batchSize'],
         ];
         $campaign = DB::transaction(function () use ($ctx, $input, $data) {
             if (! empty($input['id'])) {
@@ -284,6 +303,9 @@ class CampaignService
 
             return Campaign::query()->forceCreate($data + ['organizationId' => $ctx->organizationId, 'createdById' => $ctx->userId]);
         });
+        if ($status === 'PENDING_REVIEW') {
+            app(NotificationService::class)->notifyStaff('staff.campaign_risk', "Campaign held for a safety check: {$campaign->name}", implode('; ', $v['reviewReasons']), '/admin/campaigns?status=PENDING_REVIEW');
+        }
         $this->audit->log($status === 'PENDING_REVIEW' ? 'campaign.submit_for_review' : 'campaign.schedule', $ctx->actor(), $ctx->organizationId, 'campaign', $campaign->id, [
             'recipients' => $v['est']['included'], 'estimatedCost' => $v['est']['estimatedCost'], 'scheduledAt' => Dhaka::iso($v['scheduledAt']), 'reasons' => $v['reviewReasons'],
         ]);
@@ -291,37 +313,53 @@ class CampaignService
         return ['campaign' => $campaign, 'launchNow' => $status === 'SCHEDULED' && ! $v['scheduledAt']];
     }
 
+    /**
+     * Stops claiming new batches. Requests already sent to the provider finish and are recorded
+     * (the dispatcher re-checks the status before each chunk); unsent messages stay QUEUED.
+     */
     public function pause(TenantContext $ctx, string $id): void
     {
         $ctx->requirePermission('campaigns:write');
-        $this->owned($ctx, $id);
-        if (! Campaign::query()->whereKey($id)->where('status', 'PROCESSING')->update(['status' => 'PAUSED', 'pausedAt' => now()->format('Y-m-d H:i:s.v')])) {
+        $c = $this->owned($ctx, $id);
+        if (! Campaign::query()->whereKey($id)->where('status', 'PROCESSING')->update(['status' => 'PAUSED', 'pausedAt' => now()->format('Y-m-d H:i:s.v'), 'pausedById' => $ctx->userId])) {
             throw new AppException(ErrorCode::CONFLICT, 'Only campaigns that are sending can be paused.');
         }
         $this->audit->log('campaign.pause', $ctx->actor(), $ctx->organizationId, 'campaign', $id);
+        app(NotificationService::class)->notify($ctx->organizationId, 'campaign.lifecycle', "Campaign \"{$c->name}\" paused", 'Messages not yet sent are waiting. Resume to continue.', "/dashboard/campaigns/{$id}");
     }
 
+    /** Continues with the next pending message; accepted messages are never resent or charged again. */
     public function resume(TenantContext $ctx, string $id): void
     {
         $ctx->requirePermission('campaigns:write');
         $ctx->assertActive();
-        $this->owned($ctx, $id);
-        if (! Campaign::query()->whereKey($id)->where('status', 'PAUSED')->update(['status' => 'PROCESSING', 'pausedAt' => null])) {
+        $c = $this->owned($ctx, $id);
+        if ($c->status->value === 'PAUSED' && $c->senderIdId && ! SenderId::query()->whereKey($c->senderIdId)->where('status', 'APPROVED')->exists()) {
+            throw new AppException(ErrorCode::SENDER_ID_NOT_APPROVED, "The campaign's sender ID is no longer approved.");
+        }
+        if (! Campaign::query()->whereKey($id)->where('status', 'PAUSED')->update(['status' => 'PROCESSING', 'pausedAt' => null, 'resumedAt' => now()->format('Y-m-d H:i:s.v')])) {
             throw new AppException(ErrorCode::CONFLICT, 'Only paused campaigns can be resumed.');
         }
         $this->audit->log('campaign.resume', $ctx->actor(), $ctx->organizationId, 'campaign', $id);
+        app(NotificationService::class)->notify($ctx->organizationId, 'campaign.lifecycle', "Campaign \"{$c->name}\" resumed", 'Sending continues from the next pending message.', "/dashboard/campaigns/{$id}");
     }
 
-    public function cancel(TenantContext $ctx, string $id): void
+    /**
+     * Stops the campaign. Sent, accepted and unconfirmed messages keep their charge and history;
+     * only messages that never left the platform (QUEUED and not in flight) are cancelled and
+     * refunded through the ledger. Unconfirmed (UNKNOWN) outcomes are never refunded automatically.
+     */
+    public function cancel(TenantContext $ctx, string $id, ?string $reason = null): void
     {
         $ctx->requirePermission('campaigns:write');
         $c = $this->owned($ctx, $id);
+        $reason = $reason !== null && trim($reason) !== '' ? mb_substr(trim($reason), 0, 500) : null;
         $changed = Campaign::query()->whereKey($id)->whereIn('status', ['DRAFT', 'PENDING_REVIEW', 'SCHEDULED', 'PROCESSING', 'PAUSED'])
-            ->update(['status' => 'CANCELLED', 'cancelledAt' => now()->format('Y-m-d H:i:s.v')]);
+            ->update(['status' => 'CANCELLED', 'cancelledAt' => now()->format('Y-m-d H:i:s.v'), 'cancelledById' => $ctx->userId, 'cancelReason' => $reason]);
         if (! $changed) {
             throw new AppException(ErrorCode::CONFLICT, 'A '.strtolower($c->status->value).' campaign cannot be cancelled.');
         }
-        $this->audit->log('campaign.cancel', $ctx->actor(), $ctx->organizationId, 'campaign', $id, ['from' => $c->status->value]);
+        $this->audit->log('campaign.cancel', $ctx->actor(), $ctx->organizationId, 'campaign', $id, ['from' => $c->status->value, 'reason' => $reason]);
         // Unsent messages are cancelled and refunded; large remainders are finished by the worker.
         $this->delivery->cancelQueuedOfCampaign($id, 500);
     }
@@ -435,7 +473,9 @@ class CampaignService
             'stats' => [
                 'queued' => $by(['QUEUED']), 'sent' => $by(['SUBMITTED']), 'delivered' => $by(['DELIVERED']),
                 'failed' => $by(['FAILED', 'REJECTED', 'EXPIRED', 'CANCELLED']), 'total' => array_sum($status->all()),
+                'unknown' => $by(['UNKNOWN']),
             ],
+            'progress' => $this->progressOf($c),
             'skipped' => $skips,
             'failures' => array_map(fn ($f) => ['reason' => $f->reason, 'count' => (int) $f->n], $failures),
             'operators' => array_map(fn ($o) => ['operator' => $o->operator ?? 'Unknown', 'total' => (int) $o->total, 'delivered' => (int) $o->delivered], $operators),
@@ -447,6 +487,54 @@ class CampaignService
         ];
     }
 
+    /**
+     * Live batch progress from local records (never from the provider). "Processing" = leased or
+     * in flight right now. The remaining-time estimate is only given once three batches have run in
+     * one uninterrupted stretch; otherwise it is null rather than a guess.
+     *
+     * @return array<string, mixed>
+     */
+    public function progressOf(Campaign $c): array
+    {
+        $row = DB::selectOne("SELECT
+                COUNT(*) AS total,
+                COALESCE(SUM(status = 'QUEUED'), 0) AS pending,
+                COALESCE(SUM(status = 'QUEUED' AND (provider IS NOT NULL OR lockedUntil >= ?)), 0) AS processing,
+                COALESCE(SUM(status IN ('SUBMITTED', 'DELIVERED')), 0) AS accepted,
+                COALESCE(SUM(status = 'DELIVERED'), 0) AS delivered,
+                COALESCE(SUM(status IN ('FAILED', 'REJECTED', 'EXPIRED')), 0) AS failed,
+                COALESCE(SUM(status = 'CANCELLED'), 0) AS cancelled,
+                COALESCE(SUM(status = 'UNKNOWN'), 0) AS unknown
+            FROM messages WHERE campaignId = ?", [now()->format('Y-m-d H:i:s.v'), $c->id]);
+        $total = (int) $row->total;
+        $pending = (int) $row->pending;
+        $processed = $total - $pending;
+        $batchSize = max(1, (int) $c->batchSize);
+        $eta = null;
+        if ($c->status->value === 'PROCESSING' && ! $c->resumedAt && $c->startedAt && (int) $c->currentBatch >= 3 && $processed > 0 && $pending > 0) {
+            $elapsed = max(1, now()->getTimestamp() - $c->startedAt->getTimestamp());
+            $eta = (int) ceil($pending * $elapsed / $processed);
+        }
+
+        return [
+            'total' => $total,
+            'processed' => $processed,
+            'pending' => $pending,
+            'processing' => (int) $row->processing,
+            'accepted' => (int) $row->accepted,
+            'delivered' => (int) $row->delivered,
+            'failed' => (int) $row->failed,
+            'cancelled' => (int) $row->cancelled,
+            'unknown' => (int) $row->unknown,
+            'batchSize' => $batchSize,
+            'currentBatch' => (int) $c->currentBatch,
+            'totalBatches' => (int) ceil($total / $batchSize),
+            'percent' => $total > 0 ? round($processed * 100 / $total, 1) : 0.0,
+            'estimatedSecondsRemaining' => $eta,
+            'lastBatchAt' => Dhaka::iso($c->lastBatchAt),
+        ];
+    }
+
     public function messages(TenantContext $ctx, string $id, ?string $status, int $page, int $pageSize): LengthAwarePaginator
     {
         $ctx->requirePermission('campaigns:read');
@@ -455,7 +543,7 @@ class CampaignService
         return Message::query()->where('organizationId', $ctx->organizationId)->where('campaignId', $id)
             ->when($status, fn ($q, $s) => $q->where('status', $s))
             ->orderBy('createdAt')
-            ->paginate($pageSize, ['id', 'to', 'status', 'segments', 'cost', 'errorMessage', 'submittedAt', 'deliveredAt', 'failedAt', 'operator', 'refundedAt'], 'page', $page);
+            ->paginate($pageSize, ['id', 'to', 'status', 'segments', 'cost', 'errorMessage', 'submittedAt', 'deliveredAt', 'failedAt', 'operator', 'refundedAt', 'senderValue', 'body', 'batchNumber', 'providerMessageId', 'providerStatusCode'], 'page', $page);
     }
 
     /** Streams the per-recipient campaign report as CSV. Returns the campaign name. */
@@ -463,13 +551,14 @@ class CampaignService
     {
         $ctx->requirePermission('reports:export');
         $c = $this->owned($ctx, $id);
-        $write(Csv::bom().Csv::line(['phone', 'status', 'operator', 'segments', 'cost_bdt', 'refunded', 'error', 'queued_at', 'submitted_at', 'delivered_at', 'failed_at', 'message_id']));
+        $write(Csv::bom().Csv::line(['phone', 'status', 'operator', 'segments', 'cost_bdt', 'refunded', 'error', 'queued_at', 'submitted_at', 'delivered_at', 'failed_at', 'message_id', 'sender_id', 'batch', 'provider_reference', 'provider_code', 'message']));
         Message::query()->where('organizationId', $ctx->organizationId)->where('campaignId', $id)
-            ->select(['id', 'to', 'status', 'operator', 'segments', 'cost', 'refundedAt', 'errorMessage', 'queuedAt', 'submittedAt', 'deliveredAt', 'failedAt'])
+            ->select(['id', 'to', 'status', 'operator', 'segments', 'cost', 'refundedAt', 'errorMessage', 'queuedAt', 'submittedAt', 'deliveredAt', 'failedAt', 'senderValue', 'batchNumber', 'providerMessageId', 'providerStatusCode', 'body'])
             ->chunkById(5000, function ($rows) use ($write) {
                 $out = '';
                 foreach ($rows as $m) {
-                    $out .= Csv::line([$m->to, $m->status->value, $m->operator, $m->segments, Money::round((string) $m->cost, 2), $m->refundedAt ? 'yes' : 'no', $m->errorMessage, $m->queuedAt, $m->submittedAt, $m->deliveredAt, $m->failedAt, $m->id]);
+                    // Csv::line() neutralises formula prefixes (=, +, -, @) in every cell, CSV data included.
+                    $out .= Csv::line([$m->to, $m->status->value, $m->operator, $m->segments, Money::round((string) $m->cost, 2), $m->refundedAt ? 'yes' : 'no', $m->errorMessage, $m->queuedAt, $m->submittedAt, $m->deliveredAt, $m->failedAt, $m->id, $m->senderValue, $m->batchNumber, $m->providerMessageId, $m->providerStatusCode, $m->body]);
                 }
                 $write($out);
             });
@@ -477,7 +566,7 @@ class CampaignService
             ->chunkById(5000, function ($rows) use ($write) {
                 $out = '';
                 foreach ($rows as $s) {
-                    $out .= Csv::line([$s->phone, $s->status->value, '', 0, '0.00', 'no', 'Not sent', '', '', '', '', '']);
+                    $out .= Csv::line([$s->phone, $s->status->value, '', 0, '0.00', 'no', 'Not sent', '', '', '', '', '', '', '', '', '', '']);
                 }
                 $write($out);
             });

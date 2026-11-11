@@ -87,7 +87,7 @@ export async function submitAction(formData: FormData): Promise<ActionResult<{ i
 const idSchema = z.uuid();
 type Op = "pause" | "resume" | "cancel" | "duplicate" | "delete";
 
-export async function campaignOpAction(id: string, op: Op): Promise<ActionResult<{ id?: string }>> {
+export async function campaignOpAction(id: string, op: Op, reason?: string): Promise<ActionResult<{ id?: string }>> {
   return tenantAction<{ id?: string }>("campaigns:write", async (ctx) => {
     const cid = idSchema.parse(id);
     let message = "";
@@ -102,8 +102,8 @@ export async function campaignOpAction(id: string, op: Op): Promise<ActionResult
         message = "Campaign resumed.";
         break;
       case "cancel":
-        await cancelCampaign(ctx, cid);
-        message = "Campaign cancelled. Unsent messages are refunded.";
+        await cancelCampaign(ctx, cid, typeof reason === "string" ? reason.slice(0, 500) : undefined);
+        message = "Campaign cancelled. Messages that were never sent are refunded.";
         break;
       case "duplicate":
         newId = (await duplicateCampaign(ctx, cid)).id;

@@ -28,6 +28,11 @@ import {
   UserCog,
   Wallet,
   type LucideIcon,
+  HandCoins,
+  Banknote,
+  ListChecks,
+  CircleHelp,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
 import { SheetContent } from "@/components/ui/dialog";
@@ -37,7 +42,7 @@ import { logoutAction } from "@/features/auth/actions";
 import { cn } from "@/lib/utils";
 import { useCloseOnNavigate } from "@/hooks/use-close-on-navigate";
 
-const NAV: { href: string; label: string; icon: LucideIcon; perm: PlatformPermission; badgeKey?: string }[] = [
+const NAV: { href: string; label: string; icon: LucideIcon; perm: PlatformPermission; badgeKey?: string; feature?: string }[] = [
   { href: "/admin", label: "Overview", icon: Gauge, perm: "admin:access" },
   { href: "/admin/customers", label: "Customers", icon: Building2, perm: "admin:customers:read" },
   { href: "/admin/usage", label: "Usage", icon: ChartColumn, perm: "admin:customers:read" },
@@ -46,6 +51,11 @@ const NAV: { href: string; label: string; icon: LucideIcon; perm: PlatformPermis
   { href: "/admin/sender-ids", label: "Sender IDs", icon: BadgeCheck, perm: "admin:sender_ids:review", badgeKey: "senders" },
   { href: "/admin/wallets", label: "Wallets", icon: Wallet, perm: "admin:billing:read" },
   { href: "/admin/payments", label: "Payments", icon: CreditCard, perm: "admin:billing:read", badgeKey: "payments" },
+  { href: "/admin/topups", label: "Manual payments", icon: HandCoins, perm: "admin:topups:review", badgeKey: "topups", feature: "manualTopups" },
+  { href: "/admin/payment-methods", label: "Payment methods", icon: Banknote, perm: "admin:settings:manage", feature: "manualTopups" },
+  { href: "/admin/sender-catalog", label: "Sender catalog", icon: ListChecks, perm: "admin:sender_catalog:manage", feature: "senderCatalog" },
+  { href: "/admin/unconfirmed", label: "Unconfirmed SMS", icon: CircleHelp, perm: "admin:messages:read", badgeKey: "unconfirmed", feature: "adminApi" },
+  { href: "/admin/processing", label: "Campaign processing", icon: SlidersHorizontal, perm: "admin:settings:manage", feature: "adminApi" },
   { href: "/admin/finance", label: "Finance", icon: Landmark, perm: "admin:finance:read" },
   { href: "/admin/costs", label: "Costs & margins", icon: Calculator, perm: "admin:finance:read" },
   { href: "/admin/pricing", label: "Pricing", icon: Tags, perm: "admin:pricing:manage" },
@@ -59,7 +69,7 @@ const NAV: { href: string; label: string; icon: LucideIcon; perm: PlatformPermis
   { href: "/admin/system", label: "System health", icon: HeartPulse, perm: "admin:health:read" },
 ];
 
-export function AdminShell({ user, role, badges, children }: { user: { name: string; email: string }; role: PlatformRoleKey; badges: Record<string, number>; children: React.ReactNode }) {
+export function AdminShell({ user, role, badges, features = [], children }: { user: { name: string; email: string }; role: PlatformRoleKey; badges: Record<string, number>; features?: readonly string[]; children: React.ReactNode }) {
   const pathname = usePathname();
   const [open, setOpen] = useCloseOnNavigate();
   const [, start] = useTransition();
@@ -71,7 +81,7 @@ export function AdminShell({ user, role, badges, children }: { user: { name: str
       </div>
       <nav aria-label="Admin" className="flex-1 overflow-y-auto px-3 pb-4">
         <ul className="space-y-0.5">
-          {NAV.filter((n) => platformCan(role, n.perm)).map((n) => {
+          {NAV.filter((n) => platformCan(role, n.perm) && (!n.feature || features.includes(n.feature))).map((n) => {
             const active = n.href === "/admin" ? pathname === n.href : pathname.startsWith(n.href);
             const count = n.badgeKey ? badges[n.badgeKey] : 0;
             return (

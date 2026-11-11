@@ -92,6 +92,13 @@ final class Permissions
         'admin:payments:refund' => ['SUPER_ADMIN'],
         'admin:costs:manage' => ['SUPER_ADMIN'],
         'admin:pricing:customer' => ['SUPER_ADMIN'],
+        // Manual top-up requests (docs/22): staff can look and take notes; only SUPER_ADMIN credits or rejects.
+        'admin:topups:review' => ['ADMIN', 'SUPER_ADMIN'],
+        'admin:topups:approve' => ['SUPER_ADMIN'],
+        // Sender ID catalog of the provider account and assignment to customers (docs/22 §5).
+        'admin:sender_catalog:manage' => ['SUPER_ADMIN'],
+        // Messages whose provider outcome is unconfirmed: resolving one may refund it.
+        'admin:messages:resolve' => ['SUPER_ADMIN'],
     ];
 
     /** @param list<string>|string $required */

@@ -23,6 +23,8 @@ export interface ComposerPageConfig {
   promotionalOptOutText: string;
   rates: { transactionalMasking: number; transactionalNonMasking: number; promotionalMasking: number; promotionalNonMasking: number };
   balance: Decimal;
+  /** Permitted batch sizes (Laravel only). */
+  batching?: { default: number; allowed: number[] };
 }
 
 export async function loadComposerConfig(ctx: TenantContext): Promise<ComposerPageConfig> {
@@ -39,6 +41,7 @@ export async function loadComposerConfig(ctx: TenantContext): Promise<ComposerPa
         promotionalNonMasking: Number(c.rates.promotionalNonMasking),
       },
       balance: c.balance,
+      batching: c.batching,
     };
   }
   const [policy, plan, balance] = await Promise.all([getSmsPolicy(), getOrganizationPlan(ctx.organizationId), getBalance(ctx.organizationId)]);

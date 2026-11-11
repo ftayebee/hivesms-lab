@@ -292,6 +292,10 @@ class AdminService
         if ($p->provider !== 'manual') {
             throw new AppException(ErrorCode::VALIDATION_ERROR, 'Only manual payments are verified here.');
         }
+        if ($p->paymentMethodId !== null) {
+            // Top-up requests need the amount/reference check and password of Admin → Manual payments.
+            throw new AppException(ErrorCode::CONFLICT, 'Review this top-up request in Manual payments.');
+        }
         if ($decision === 'approve') {
             $this->payments->complete($id, $admin->actor(), $p->manualReference ? "MANUAL-{$p->manualReference}" : null, null, $reason ?? 'verified by admin');
         } else {

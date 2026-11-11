@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\V1\Admin\AdminCustomerController;
 use App\Http\Controllers\Api\V1\Admin\AdminCustomerPricingController;
 use App\Http\Controllers\Api\V1\Admin\AdminExportController;
 use App\Http\Controllers\Api\V1\Admin\AdminFinanceController;
+use App\Http\Controllers\Api\V1\Admin\AdminManualPaymentController;
+use App\Http\Controllers\Api\V1\Admin\AdminOperationsController;
 use App\Http\Controllers\Api\V1\Admin\AdminPlatformController;
 use App\Http\Controllers\Api\V1\Admin\AdminReviewController;
 use App\Http\Controllers\Api\V1\Admin\AdminSettingsController;
@@ -16,6 +18,7 @@ use App\Http\Controllers\Api\V1\ApiKeys\ApiKeyController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\Auth\GoogleAuthController;
 use App\Http\Controllers\Api\V1\Campaigns\CampaignController;
+use App\Http\Controllers\Api\V1\Campaigns\DynamicSmsController;
 use App\Http\Controllers\Api\V1\Contacts\ContactController;
 use App\Http\Controllers\Api\V1\Contacts\ContactExportController;
 use App\Http\Controllers\Api\V1\Contacts\ContactGroupController;
@@ -23,6 +26,7 @@ use App\Http\Controllers\Api\V1\Contacts\ContactImportController;
 use App\Http\Controllers\Api\V1\Contacts\SuppressionController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\Internal\WorkerController;
+use App\Http\Controllers\Api\V1\Payments\ManualTopUpController;
 use App\Http\Controllers\Api\V1\Payments\PaymentController;
 use App\Http\Controllers\Api\V1\PublicController;
 use App\Http\Controllers\Api\V1\Reports\DashboardController;
@@ -195,6 +199,21 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
             Route::get('campaigns/{id}', [CampaignController::class, 'show'])->name('campaigns.show');
             Route::get('campaigns/{id}/stats', [CampaignController::class, 'stats'])->name('campaigns.stats');
             Route::get('campaigns/{id}/messages', [CampaignController::class, 'messages'])->name('campaigns.messages');
+            Route::get('campaigns/{id}/progress', [CampaignController::class, 'progress'])->name('campaigns.progress');
+        });
+
+        // Dynamic SMS: per-row CSV personalisation (docs/20). Off unless FEATURE_DYNAMIC_SMS=true.
+        Route::prefix('dynamic-sms')->name('dynamic.')->middleware('feature:dynamic_sms')->group(function (): void {
+            Route::get('template', [DynamicSmsController::class, 'template'])->middleware('tenant:campaigns:read')->name('template');
+            Route::get('uploads/{id}', [DynamicSmsController::class, 'show'])->middleware('tenant:campaigns:read')->name('uploads.show');
+            Route::middleware(['tenant:campaigns:write,sms:send', 'ratelimit:dashboard_send_per_user'])->group(function (): void {
+                Route::post('uploads', [DynamicSmsController::class, 'upload'])->name('uploads.store');
+                Route::post('preview', [DynamicSmsController::class, 'preview'])->name('preview');
+            });
+            Route::middleware(['tenant:campaigns:write,sms:send', 'verified.email', 'ratelimit:dashboard_send_per_user', 'idempotent'])->group(function (): void {
+                Route::post('estimate', [DynamicSmsController::class, 'estimate'])->name('estimate');
+                Route::post('submit', [DynamicSmsController::class, 'submit'])->name('submit');
+            });
         });
         Route::get('campaigns/{id}/export', [CampaignController::class, 'export'])->middleware('tenant:reports:export')->name('campaigns.export');
         Route::middleware('tenant:campaigns:write')->group(function (): void {
@@ -248,6 +267,21 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
             Route::post('payments/{id}/reference', [PaymentController::class, 'submitReference'])->name('payments.reference');
             Route::post('payments/{id}/cancel', [PaymentController::class, 'cancel'])->name('payments.cancel');
             Route::post('payments/{id}/mock-complete', [PaymentController::class, 'mockComplete'])->name('payments.mock');
+        });
+
+        // Manual top-ups to configured receiving accounts (docs/22). Off unless FEATURE_MANUAL_TOPUPS=true.
+        Route::middleware('feature:manual_topups')->group(function (): void {
+            Route::middleware('tenant:billing:read')->group(function (): void {
+                Route::get('payment-methods', [ManualTopUpController::class, 'methods'])->name('payment-methods.index');
+                Route::get('payment-methods/{id}/qr', [ManualTopUpController::class, 'qr'])->name('payment-methods.qr');
+                Route::get('topup-requests', [ManualTopUpController::class, 'index'])->name('topups.index');
+                Route::get('topup-requests/{id}', [ManualTopUpController::class, 'show'])->name('topups.show');
+                Route::get('topup-requests/{id}/proof', [ManualTopUpController::class, 'proof'])->name('topups.proof');
+            });
+            Route::middleware(['tenant:billing:manage', 'ratelimit:dashboard_send_per_user'])->group(function (): void {
+                Route::post('topup-requests', [ManualTopUpController::class, 'store'])->middleware('idempotent')->name('topups.store');
+                Route::post('topup-requests/{id}/cancel', [ManualTopUpController::class, 'cancel'])->name('topups.cancel');
+            });
         });
 
         // Developers
@@ -379,7 +413,46 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
             Route::get('settings/billing-policy', [AdminSettingsController::class, 'billingPolicy'])->name('settings.billing.show');
             Route::put('settings/billing-policy', [AdminSettingsController::class, 'updateSettings'])->defaults('section', 'billing-policy')->name('settings.billing');
         });
+        // Manual payment methods + requests (docs/22).
+        Route::middleware('feature:manual_topups')->group(function (): void {
+            Route::middleware('platform:admin:settings:manage')->group(function (): void {
+                Route::get('payment-methods', [AdminManualPaymentController::class, 'methods'])->name('payment-methods.index');
+                Route::post('payment-methods', [AdminManualPaymentController::class, 'storeMethod'])->name('payment-methods.store');
+                Route::post('payment-methods/reorder', [AdminManualPaymentController::class, 'reorder'])->name('payment-methods.reorder');
+                Route::put('payment-methods/{id}', [AdminManualPaymentController::class, 'updateMethod'])->name('payment-methods.update');
+                Route::delete('payment-methods/{id}', [AdminManualPaymentController::class, 'destroyMethod'])->name('payment-methods.destroy');
+                Route::post('payment-methods/{id}/qr', [AdminManualPaymentController::class, 'uploadQr'])->name('payment-methods.qr.upload');
+                Route::get('payment-methods/{id}/qr', [AdminManualPaymentController::class, 'qr'])->name('payment-methods.qr');
+            });
+            Route::middleware('platform:admin:topups:review')->group(function (): void {
+                Route::get('topup-requests', [AdminManualPaymentController::class, 'index'])->name('topups.index');
+                Route::get('topup-requests/{id}', [AdminManualPaymentController::class, 'show'])->name('topups.show');
+                Route::get('topup-requests/{id}/proof', [AdminManualPaymentController::class, 'proof'])->name('topups.proof');
+                Route::post('topup-requests/{id}/under-review', [AdminManualPaymentController::class, 'underReview'])->name('topups.under-review');
+                Route::post('topup-requests/{id}/notes', [AdminManualPaymentController::class, 'note'])->name('topups.notes');
+            });
+            Route::middleware('platform:admin:topups:approve')->group(function (): void {
+                Route::post('topup-requests/{id}/approve', [AdminManualPaymentController::class, 'approve'])->name('topups.approve');
+                Route::post('topup-requests/{id}/reject', [AdminManualPaymentController::class, 'reject'])->name('topups.reject');
+            });
+        });
+
+        // Provider sender catalog and assignment (docs/22 §5). Off unless FEATURE_SENDER_CATALOG=true.
+        Route::middleware(['feature:sender_catalog', 'platform:admin:sender_catalog:manage'])->group(function (): void {
+            Route::get('sender-catalog', [AdminOperationsController::class, 'catalog'])->name('sender-catalog.index');
+            Route::post('sender-catalog', [AdminOperationsController::class, 'addCatalog'])->name('sender-catalog.store');
+            Route::post('sender-catalog/sync', [AdminOperationsController::class, 'syncCatalog'])->name('sender-catalog.sync');
+            Route::put('sender-catalog/{id}', [AdminOperationsController::class, 'updateCatalog'])->name('sender-catalog.update');
+            Route::put('sender-catalog/{id}/assignments', [AdminOperationsController::class, 'assignCatalog'])->name('sender-catalog.assign');
+        });
+
+        // Unconfirmed provider outcomes (docs/21 §6).
+        Route::get('messages/unconfirmed', [AdminOperationsController::class, 'unconfirmed'])->middleware('platform:admin:messages:read')->name('messages.unconfirmed');
+        Route::post('messages/{id}/resolve', [AdminOperationsController::class, 'resolve'])->middleware('platform:admin:messages:resolve')->name('messages.resolve');
+
         Route::middleware('platform:admin:settings:manage')->group(function (): void {
+            Route::get('settings/campaign-processing', [AdminOperationsController::class, 'processingSettings'])->name('settings.processing.show');
+            Route::put('settings/campaign-processing', [AdminOperationsController::class, 'updateProcessingSettings'])->name('settings.processing.update');
             Route::get('settings', [AdminSettingsController::class, 'settings'])->name('settings.show');
             Route::put('settings/{section}', [AdminSettingsController::class, 'updateSettings'])->where('section', 'sms-policy|sms-provider|payments|site-content')->name('settings.update');
         });

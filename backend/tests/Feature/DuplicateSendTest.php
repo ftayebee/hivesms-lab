@@ -20,8 +20,8 @@ use Tests\TestCase;
 
 /**
  * Duplicate-SMS protection: a message is resent only when it certainly never reached the
- * provider. Ambiguous outcomes (read timeout, 5xx after receipt, worker crash mid-send) are closed
- * as FAILED + refunded and never resent.
+ * provider. Ambiguous outcomes (read timeout, 5xx after receipt, worker crash mid-send) become
+ * UNKNOWN: never resent, never refunded automatically, resolved by staff (docs/21 §6).
  */
 class DuplicateSendTest extends TestCase
 {
@@ -69,34 +69,34 @@ class DuplicateSendTest extends TestCase
         }
     }
 
-    public function test_provider_5xx_after_receipt_is_failed_refunded_and_never_resent(): void
+    public function test_provider_5xx_after_receipt_is_unknown_not_refunded_and_never_resent(): void
     {
         $this->useHttpProvider();
         Http::fake(['gateway.invalid/*' => Http::response('Internal Server Error', 500)]);
         [$t, $id] = $this->queued();
         app(DispatcherService::class)->processQueue();
         $m = Message::query()->findOrFail($id);
-        $this->assertSame(['FAILED', 'HTTP_500'], [$m->status->value, $m->errorCode]);
-        $this->assertNotNull($m->refundedAt);
-        $this->assertSame('10.0000', $this->balance($t['org']));
+        $this->assertSame(['UNKNOWN', 'HTTP_500'], [$m->status->value, $m->errorCode]);
+        $this->assertNull($m->refundedAt);
+        $this->assertSame('9.6000', $this->balance($t['org'])); // may have been delivered: stays charged
         // Later ticks never send it again.
         $this->travel(2)->hours();
         app(DispatcherService::class)->processQueue();
         $this->assertSame(1, $this->sendCount());
-        $this->assertSame(1, WalletTransaction::query()->where('reason', 'REFUND')->count());
+        $this->assertSame(0, WalletTransaction::query()->where('reason', 'REFUND')->count());
     }
 
-    public function test_read_timeout_is_failed_and_never_resent(): void
+    public function test_read_timeout_is_unknown_and_never_resent(): void
     {
         $this->useHttpProvider();
         Http::fake(['gateway.invalid/*' => Http::failedConnection('cURL error 28: Operation timed out after 15000 milliseconds with 0 bytes received')]);
         [, $id] = $this->queued();
         app(DispatcherService::class)->processQueue();
-        $this->assertSame(['FAILED', 'PROVIDER_TIMEOUT'], [Message::query()->findOrFail($id)->status->value, Message::query()->findOrFail($id)->errorCode]);
+        $this->assertSame(['UNKNOWN', 'PROVIDER_TIMEOUT'], [Message::query()->findOrFail($id)->status->value, Message::query()->findOrFail($id)->errorCode]);
         $this->travel(2)->hours();
         app(DispatcherService::class)->processQueue();
         $m = Message::query()->findOrFail($id);
-        $this->assertSame(['FAILED', 1], [$m->status->value, $m->attempts]); // never claimed again
+        $this->assertSame(['UNKNOWN', 1], [$m->status->value, $m->attempts]); // never claimed again
     }
 
     public function test_connect_failure_never_reached_the_provider_and_is_retried(): void
@@ -147,9 +147,9 @@ class DuplicateSendTest extends TestCase
         $this->travel(10)->minutes(); // lease expired
         app(DispatcherService::class)->processQueue();
         $m = Message::query()->findOrFail($id);
-        $this->assertSame(['FAILED', 'SEND_INTERRUPTED'], [$m->status->value, $m->errorCode]);
+        $this->assertSame(['UNKNOWN', 'SEND_INTERRUPTED'], [$m->status->value, $m->errorCode]);
         $this->assertSame(0, $counting->count);
-        $this->assertSame('10.0000', $this->balance($t['org']));
+        $this->assertSame('9.6000', $this->balance($t['org'])); // not refunded automatically
     }
 
     public function test_lease_expired_before_the_marker_is_safely_retried(): void

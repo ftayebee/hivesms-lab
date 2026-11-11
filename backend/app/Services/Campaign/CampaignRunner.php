@@ -174,9 +174,15 @@ class CampaignRunner
                 }
             }
 
-            $members = $this->resolveAudience($org->id, (array) $campaign->audience, $campaign->smsType->value);
-            if (count($members) > $policy['maxCampaignRecipients']) {
-                throw new AppException(ErrorCode::VALIDATION_ERROR, "Campaigns are limited to {$policy['maxCampaignRecipients']} recipients.");
+            $dynamic = $campaign->kind?->value === 'DYNAMIC';
+            // Dynamic campaigns: every row rendered on its own from the stored CSV, with its own
+            // (approved) sender and price; nothing is shared between rows.
+            $members = $dynamic
+                ? app(DynamicSmsService::class)->materialize($campaign)
+                : $this->resolveAudience($org->id, (array) $campaign->audience, $campaign->smsType->value);
+            $limit = $dynamic ? $this->settings->campaignProcessing()['maxDynamicRows'] : $policy['maxCampaignRecipients'];
+            if (count($members) > $limit) {
+                throw new AppException(ErrorCode::VALIDATION_ERROR, 'Campaigns are limited to '.number_format($limit).' recipients.');
             }
             $rate = SmsCostCalculator::rateFor($this->pricing->planFor($org->id), $campaign->smsType->value, $campaign->senderType->value);
             $optOut = $campaign->smsType->value === 'PROMOTIONAL' && $policy['appendOptOutText'] ? "\n".$policy['promotionalOptOutText'] : '';
@@ -190,20 +196,30 @@ class CampaignRunner
 
                     continue;
                 }
-                $body = MessageSegmentCalculator::renderTemplate($campaign->message, $m['variables']).$optOut;
-                $seg = MessageSegmentCalculator::calculate($body, $policy['segmentation']);
+                if ($dynamic) {
+                    // Already rendered (incl. opt-out text), segmented and priced per row by DynamicSmsService.
+                    $body = $m['body'];
+                    $seg = ['segments' => $m['segments'], 'encoding' => $m['encoding'], 'exceedsMax' => false];
+                    $rowRate = $m['rate'];
+                    $sender = $m['sender'];
+                } else {
+                    $body = MessageSegmentCalculator::renderTemplate($campaign->message, $m['variables']).$optOut;
+                    $seg = MessageSegmentCalculator::calculate($body, $policy['segmentation']);
+                    $rowRate = $rate;
+                    $sender = ['value' => $campaign->senderValue, 'type' => $campaign->senderType->value];
+                }
                 if ($seg['exceedsMax'] || trim($body) === '') {
                     $recipientRows[] = $this->recipientRow($campaignId, $m, 'SKIPPED_INVALID', null, $now);
 
                     continue;
                 }
-                $cost = SmsCostCalculator::messageCost($seg['segments'], 1, $rate);
+                $cost = SmsCostCalculator::messageCost($seg['segments'], 1, $rowRate);
                 $messageId = (string) Str::uuid();
                 $messageRows[] = [
                     'id' => $messageId, 'organizationId' => $org->id, 'campaignId' => $campaignId, 'apiKeyId' => null, 'source' => 'CAMPAIGN',
-                    'to' => $m['phone'], 'operator' => Phone::operator($m['phone']), 'senderValue' => $campaign->senderValue,
-                    'senderType' => $campaign->senderType->value, 'smsType' => $campaign->smsType->value, 'body' => $body,
-                    'encoding' => $seg['encoding'], 'segments' => $seg['segments'], 'unitPrice' => $rate, 'cost' => $cost,
+                    'to' => $m['phone'], 'operator' => Phone::operator($m['phone']), 'senderValue' => $sender['value'],
+                    'senderType' => $sender['type'], 'smsType' => $campaign->smsType->value, 'body' => $body,
+                    'encoding' => $seg['encoding'], 'segments' => $seg['segments'], 'unitPrice' => $rowRate, 'cost' => $cost,
                     'status' => 'QUEUED', 'attempts' => 0, 'nextAttemptAt' => $now, 'queuedAt' => $now, 'createdAt' => $now, 'updatedAt' => $now,
                 ];
                 $recipientRows[] = $this->recipientRow($campaignId, $m, 'INCLUDED', $messageId, $now);
@@ -242,6 +258,7 @@ class CampaignRunner
                 'recipients' => count($messageRows), 'skipped' => count($recipientRows) - count($messageRows), 'cost' => Money::round($total, 2),
             ]);
             $this->lowBalance->check($org->id);
+            $this->notifications->notify($org->id, 'campaign.lifecycle', "Campaign \"{$campaign->name}\" started", count($messageRows).' messages queued; they are sent in batches of '.max(1, (int) $campaign->batchSize).'.', "/dashboard/campaigns/{$campaignId}");
 
             return ['launched' => true, 'messages' => count($messageRows)];
         } catch (Throwable $e) {
@@ -310,6 +327,14 @@ class CampaignRunner
                 "/dashboard/campaigns/{$c->id}",
                 email: fn () => EmailTemplates::campaignCompleted(['name' => $c->name, 'recipients' => $c->recipientCount, 'delivered' => $c->deliveredCount, 'failed' => $c->failedCount, 'cost' => $cost, 'campaignId' => $c->id]),
             );
+            // Runs once per campaign (guarded by the PROCESSING → COMPLETED transition above).
+            if ($c->failedCount > 0 || $c->unknownCount > 0) {
+                $this->notifications->notify($c->organizationId, 'campaign.partial', "Campaign \"{$c->name}\" finished with problems",
+                    "{$c->failedCount} failed".($c->unknownCount ? ", {$c->unknownCount} unconfirmed by the provider (not resent, under review)" : '').'.', "/dashboard/campaigns/{$c->id}");
+            }
+            if ($c->unknownCount > 0) {
+                $this->notifications->notifyStaff('staff.unconfirmed_messages', "{$c->unknownCount} unconfirmed messages in \"{$c->name}\"", 'The provider did not confirm these messages. Resolve them in Admin → Unconfirmed messages.', '/admin/messages/unconfirmed');
+            }
         }
 
         return $completed;

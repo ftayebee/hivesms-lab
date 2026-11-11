@@ -48,6 +48,31 @@ interface LaravelCampaign {
   createdAt: string;
   updatedAt: string;
   template?: { id: string; name: string } | null;
+  kind?: "STANDARD" | "DYNAMIC";
+  batchSize?: number;
+  currentBatch?: number;
+  unknownCount?: number;
+  cancelReason?: string | null;
+  dynamic?: { fileName: string | null; rowCount: number | null; recipientColumn: string | null; senderColumn: string | null; fields: string[]; missingValues: string } | null;
+}
+
+/** Batch progress computed by Laravel from local message records (docs/21). */
+export interface CampaignProgress {
+  total: number;
+  processed: number;
+  pending: number;
+  processing: number;
+  accepted: number;
+  delivered: number;
+  failed: number;
+  cancelled: number;
+  unknown: number;
+  batchSize: number;
+  currentBatch: number;
+  totalBatches: number;
+  percent: number;
+  estimatedSecondsRemaining: number | null;
+  lastBatchAt: string | null;
 }
 
 function toCampaign(c: LaravelCampaign) {
@@ -82,6 +107,7 @@ function composerBody(input: ComposerInput) {
     numbers: input.numbers,
     scheduleMode: input.scheduleMode,
     scheduledAt: input.scheduledAt,
+    ...(input.batchSize ? { batchSize: input.batchSize } : {}),
   };
 }
 
@@ -108,8 +134,8 @@ export async function submit(input: ComposerInput, actor: { userId: string | nul
   return { campaign: toCampaign(res.data), launchNow: false as const };
 }
 
-export async function op(id: string, action: "pause" | "resume" | "cancel") {
-  await laravel.post(`app/campaigns/${encodeURIComponent(id)}/${action}`);
+export async function op(id: string, action: "pause" | "resume" | "cancel", reason?: string) {
+  await laravel.post(`app/campaigns/${encodeURIComponent(id)}/${action}`, action === "cancel" && reason ? { reason } : {});
 }
 
 export async function duplicate(id: string) {
@@ -132,7 +158,8 @@ export async function listCampaigns(q: { q?: string; status?: CampaignStatus; ty
 interface LaravelCampaignDetail {
   campaign: LaravelCampaign;
   createdBy: string | null;
-  stats: { queued: number; sent: number; delivered: number; failed: number; total: number };
+  stats: { queued: number; sent: number; delivered: number; failed: number; total: number; unknown?: number };
+  progress?: CampaignProgress;
   skipped: Record<string, number>;
   failures: Array<{ reason: string; count: number }>;
   operators: Array<{ operator: string; total: number; delivered: number }>;
@@ -148,6 +175,7 @@ export async function getCampaignDetail(id: string) {
     skipped: d.skipped,
     failures: d.failures,
     operators: d.operators,
+    progress: d.progress ?? null,
     timeline: d.timeline.map((t) => ({ id: t.id, action: t.action, at: date(t.at), actor: t.actor, metadata: (t.metadata ?? {}) as Record<string, unknown> })),
   };
 }
@@ -182,6 +210,7 @@ export interface ComposerConfig {
   promotionalOptOutText: string;
   rates: { transactionalMasking: string; transactionalNonMasking: string; promotionalMasking: string; promotionalNonMasking: string };
   balance: string;
+  batching?: { default: number; allowed: number[] };
 }
 
 export async function composerConfig() {

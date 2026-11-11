@@ -138,6 +138,10 @@ export const PLATFORM_PERMISSIONS = {
   "admin:payments:refund": ["SUPER_ADMIN"],
   "admin:costs:manage": ["SUPER_ADMIN"],
   "admin:pricing:customer": ["SUPER_ADMIN"],
+  "admin:topups:review": ["ADMIN", "SUPER_ADMIN"],
+  "admin:topups:approve": ["SUPER_ADMIN"],
+  "admin:sender_catalog:manage": ["SUPER_ADMIN"],
+  "admin:messages:resolve": ["SUPER_ADMIN"],
 } as const satisfies Record<string, PlatformRoleKey[]>;
 
 export type PlatformPermission = keyof typeof PLATFORM_PERMISSIONS;

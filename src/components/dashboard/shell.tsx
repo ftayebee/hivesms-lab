@@ -22,6 +22,7 @@ import {
   Menu,
   Receipt,
   Send,
+  FileSpreadsheet,
   Settings,
   Shield,
   User,
@@ -44,6 +45,7 @@ const ICONS: Record<NavIconName, LucideIcon> = {
   LayoutDashboard,
   Megaphone,
   Send,
+  FileSpreadsheet,
   BookUser,
   LayoutTemplate,
   BadgeCheck,
@@ -61,18 +63,20 @@ export interface ShellProps {
   organization: { id: string; name: string; roleName: string };
   organizations: { id: string; name: string }[];
   permissions: readonly string[];
+  /** Enabled opt-in modules (LARAVEL_FEATURES); nav items with a `feature` need theirs. */
+  features?: readonly string[];
   unreadNotifications: number;
   balanceLabel: string | null;
   children: React.ReactNode;
 }
 
-function SidebarNav({ permissions, onNavigate }: { permissions: readonly string[]; onNavigate?: () => void }) {
+function SidebarNav({ permissions, features = [], onNavigate }: { permissions: readonly string[]; features?: readonly string[]; onNavigate?: () => void }) {
   const pathname = usePathname();
   const { t } = useI18n();
   return (
     <nav aria-label="Dashboard" className="space-y-5">
       {dashboardNav.map((group, gi) => {
-        const items = group.items.filter((i) => !i.permission || permissions.includes(i.permission));
+        const items = group.items.filter((i) => (!i.permission || permissions.includes(i.permission)) && (!i.feature || features.includes(i.feature)));
         if (!items.length) return null;
         return (
           <div key={gi}>
@@ -138,7 +142,7 @@ function OrgSwitcher({ organization, organizations }: Pick<ShellProps, "organiza
   );
 }
 
-export function DashboardShell({ user, organization, organizations, permissions, unreadNotifications, balanceLabel, children }: ShellProps) {
+export function DashboardShell({ user, organization, organizations, permissions, features, unreadNotifications, balanceLabel, children }: ShellProps) {
   const [open, setOpen] = useCloseOnNavigate();
   const router = useRouter();
   const { locale, t } = useI18n();
@@ -155,7 +159,7 @@ export function DashboardShell({ user, organization, organizations, permissions,
         <OrgSwitcher organization={organization} organizations={organizations} />
       </div>
       <div className="flex-1 overflow-y-auto px-3 pb-6">
-        <SidebarNav permissions={permissions} onNavigate={onNavigate} />
+        <SidebarNav permissions={permissions} features={features} onNavigate={onNavigate} />
       </div>
       {user.isStaff && (
         <div className="border-t border-border p-3">

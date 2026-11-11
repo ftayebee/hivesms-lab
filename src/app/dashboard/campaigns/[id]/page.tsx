@@ -18,6 +18,7 @@ import { formatBdPhone } from "@/lib/phone";
 import { getT } from "@/i18n/server";
 import { getCampaignDetail, listCampaignMessages } from "@/features/campaigns/service";
 import { CampaignControls } from "@/features/campaigns/components/campaign-controls";
+import { BatchProgress } from "@/features/campaigns/components/batch-progress";
 import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Campaign" };
@@ -25,10 +26,10 @@ export const metadata = { title: "Campaign" };
 const TIMELINE_LABELS: Record<string, string> = {
   "campaign.create": "Draft created",
   "campaign.duplicate": "Created as a copy",
-  "campaign.submit_for_review": "Submitted for review",
-  "campaign.schedule": "Scheduled for sending",
-  "campaign.approve": "Approved by review team",
-  "campaign.reject": "Rejected by review team",
+  "campaign.submit_for_review": "Held for a safety check",
+  "campaign.schedule": "Queued for sending",
+  "campaign.approve": "Cleared by the safety team",
+  "campaign.reject": "Stopped by the safety team",
   "campaign.launch": "Sending started (wallet charged)",
   "campaign.pause": "Paused",
   "campaign.resume": "Resumed",
@@ -43,7 +44,7 @@ const SKIP_LABELS: Record<string, string> = {
   SKIPPED_BLOCKED: "Blocked number",
 };
 
-const MSG_STATUSES = ["QUEUED", "SUBMITTED", "DELIVERED", "FAILED", "REJECTED", "EXPIRED", "CANCELLED"] as const;
+const MSG_STATUSES = ["QUEUED", "SUBMITTED", "DELIVERED", "FAILED", "REJECTED", "EXPIRED", "CANCELLED", "UNKNOWN"] as const;
 
 export default async function CampaignDetailPage({ params, searchParams }: PageProps<"/dashboard/campaigns/[id]">) {
   const [{ id }, sp] = await Promise.all([params, searchParams]);
@@ -57,10 +58,10 @@ export default async function CampaignDetailPage({ params, searchParams }: PageP
     if (isAppError(err) && err.code === "NOT_FOUND") notFound();
     throw err;
   }
-  const { campaign: c, stats, failures, operators, timeline, skipped, createdBy } = detail;
+  const { campaign: c, stats, failures, operators, timeline, skipped, createdBy, progress } = detail;
   const page = parsePage(sp.page);
   const statusFilter = MSG_STATUSES.find((s) => s === sp.status);
-  const messages = await listCampaignMessages(ctx, id, { status: statusFilter, page, pageSize: 25 });
+  const messages = await listCampaignMessages(ctx, id, { status: statusFilter as Exclude<typeof statusFilter, "UNKNOWN">, page, pageSize: 25 }) // UNKNOWN exists only on Laravel (docs/21);
   const statusLabel = (s: string) => t.status[s as keyof typeof t.status] ?? s;
   const pending = stats.queued + stats.sent;
   const finals = stats.delivered + stats.failed;
@@ -95,8 +96,8 @@ export default async function CampaignDetailPage({ params, searchParams }: PageP
       />
 
       {c.status === "PENDING_REVIEW" && (
-        <Alert tone="warning" className="mb-6" title="Waiting for review">
-          Our team reviews this campaign before it is sent. {c.reviewNote ? `Reason: ${c.reviewNote}.` : ""} You will be notified of the decision. Nothing has been charged yet.
+        <Alert tone="warning" className="mb-6" title="Held for a safety check">
+          A risk control flagged this campaign, so our team checks it before sending. {c.reviewNote ? `Reason: ${c.reviewNote}.` : ""} You will be notified of the decision. Nothing has been charged yet.
         </Alert>
       )}
       {c.status === "SCHEDULED" && (
@@ -109,6 +110,11 @@ export default async function CampaignDetailPage({ params, searchParams }: PageP
           {c.failureReason}
         </Alert>
       )}
+      {c.status === "CANCELLED" && "cancelReason" in c && c.cancelReason && (
+        <Alert tone="info" className="mb-6" title="Cancelled">
+          Reason: {c.cancelReason}
+        </Alert>
+      )}
       {c.status === "PAUSED" && (
         <Alert tone="warning" className="mb-6" title="Paused">
           {formatNumber(stats.queued)} messages are waiting. Resume to continue sending.
@@ -117,7 +123,7 @@ export default async function CampaignDetailPage({ params, searchParams }: PageP
 
       <section aria-label="Campaign statistics" className="grid grid-cols-2 gap-4 lg:grid-cols-4 xl:grid-cols-6">
         <StatsCard label="Recipients" value={formatNumber(c.recipientCount)} icon={Users} hint={c.skippedCount ? `${formatNumber(c.skippedCount)} skipped` : "All eligible"} />
-        <StatsCard label="Sent" value={formatNumber(c.submittedCount)} icon={Send} hint="Accepted by provider" />
+        <StatsCard label="Accepted" value={formatNumber(c.submittedCount)} icon={Send} hint="Accepted by provider (not yet delivered)" />
         <StatsCard label="Delivered" value={formatNumber(stats.delivered)} icon={CheckCheck} tone="success" hint={finals ? formatPercent(stats.delivered / finals) : "-"} />
         <StatsCard label="Failed" value={formatNumber(stats.failed)} icon={CircleAlert} tone="danger" hint="Refunded per policy" />
         <StatsCard label="Pending" value={formatNumber(pending)} icon={Clock} tone="primary" hint={stats.queued ? `${formatNumber(stats.queued)} in queue` : "Awaiting reports"} />
@@ -130,7 +136,9 @@ export default async function CampaignDetailPage({ params, searchParams }: PageP
         />
       </section>
 
-      {stats.total > 0 && (
+      {progress && progress.total > 0 && <BatchProgress progress={progress} status={c.status} />}
+
+      {stats.total > 0 && !progress && (
         <Card className="mt-6">
           <CardContent className="pt-5">
             <div className="mb-2 flex justify-between text-sm">

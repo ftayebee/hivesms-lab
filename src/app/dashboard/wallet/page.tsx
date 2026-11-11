@@ -12,6 +12,9 @@ import { loadWalletPage } from "@/features/wallet/service";
 import { laravelPage } from "@/lib/laravel-api";
 import { TopUpForm } from "@/features/wallet/components/top-up-form";
 import { CancelPaymentButton, ThresholdForm } from "@/features/wallet/components/wallet-controls";
+import { laravelEnabled } from "@/lib/laravel/flags";
+import { customerMethods, customerRequests } from "@/features/manual-topups/laravel";
+import { ManualTopUp } from "@/features/manual-topups/components/manual-topup";
 
 export const metadata = { title: "Wallet" };
 
@@ -21,6 +24,8 @@ export default async function WalletPage() {
   const { t } = await getT();
   const canManage = can(ctx, "billing:manage");
   const { summary, policy, packages, providers, payments, invoices } = await laravelPage(() => loadWalletPage(ctx, canManage));
+  // Manual receiving accounts (docs/22): opt-in module, Laravel only.
+  const manual = laravelEnabled("manualTopups") ? await laravelPage(() => Promise.all([customerMethods(), customerRequests()])) : null;
 
   return (
     <>
@@ -79,6 +84,18 @@ export default async function WalletPage() {
           </Card>
         )}
       </div>
+
+      {manual && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle>Pay manually</CardTitle>
+            <CardDescription>Send money to one of these accounts, then submit the transaction ID. We verify it and add the balance.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ManualTopUp methods={manual[0].methods} requests={manual[1].rows} vatRatePercent={manual[0].policy.vatRatePercent} canManage={canManage} />
+          </CardContent>
+        </Card>
+      )}
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2 [&>*]:min-w-0">
         <Card>

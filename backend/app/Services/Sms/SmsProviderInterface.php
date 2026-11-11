@@ -32,6 +32,14 @@ interface SmsProviderInterface
     /** @return array{amount: float, currency: string, unit: string}|null */
     public function balance(): ?array;
 
+    /**
+     * Sender IDs registered on the provider account, or null when the provider's API offers no
+     * such listing (then the catalog is maintained by hand in Admin → Sender catalog).
+     *
+     * @return list<array{value: string, type: 'MASKING'|'NON_MASKING', status?: ?string}>|null
+     */
+    public function listSenderIds(): ?array;
+
     /** @return array{valid: bool, reason?: string} */
     public function validateSenderId(string $senderId, string $type): array;
 

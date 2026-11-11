@@ -2,7 +2,7 @@
 
 namespace App\Jobs;
 
-use App\Models\Message;
+use App\Models\Campaign;
 use App\Services\Campaign\CampaignRunner;
 use App\Services\Messaging\DispatcherService;
 use Illuminate\Bus\Queueable;
@@ -41,9 +41,11 @@ class LaunchCampaignJob implements ShouldBeUnique, ShouldQueue
     public function handle(CampaignRunner $runner, DispatcherService $dispatcher): void
     {
         $r = $runner->launch($this->campaignId);
+        // Small campaigns start right away, still in their own batch size; the scheduled worker
+        // continues anything left (and everything for larger campaigns).
         if (($r['launched'] ?? false) && ($r['messages'] ?? 0) <= (int) config('smsflow.sms.inline_dispatch_max')) {
-            $ids = Message::query()->where('campaignId', $this->campaignId)->where('status', 'QUEUED')->pluck('id')->all();
-            $dispatcher->dispatchNow($ids);
+            $batchSize = max(1, (int) Campaign::query()->whereKey($this->campaignId)->value('batchSize'));
+            $dispatcher->processCampaignBatches((int) ceil($r['messages'] / $batchSize), microtime(true) + 60, [$this->campaignId]);
         }
     }
 }

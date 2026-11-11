@@ -34,12 +34,22 @@ export const LARAVEL_FEATURES = [
   "worker", // background sending/delivery polling: Laravel scheduler (sms:work); the Node worker and tick stand down
 ] as const;
 
-export type LaravelFeature = (typeof LARAVEL_FEATURES)[number];
+/**
+ * Laravel-only modules added after the cutover (docs/23). They have no Prisma implementation and
+ * are NOT switched on by `all`: each must be named explicitly, e.g.
+ *   LARAVEL_FEATURES=all,dynamicSms,manualTopups,senderCatalog
+ * The matching backend switches (FEATURE_DYNAMIC_SMS, FEATURE_MANUAL_TOPUPS, FEATURE_SENDER_CATALOG)
+ * must be on as well, or the API answers FEATURE_DISABLED.
+ */
+export const OPT_IN_FEATURES = ["dynamicSms", "manualTopups", "senderCatalog"] as const;
+
+export type OptInFeature = (typeof OPT_IN_FEATURES)[number];
+export type LaravelFeature = (typeof LARAVEL_FEATURES)[number] | OptInFeature;
 
 let cached: { raw: string; set: ReadonlySet<LaravelFeature> } | undefined;
 
 function parse(raw: string): ReadonlySet<LaravelFeature> {
-  const known = new Set<string>(LARAVEL_FEATURES);
+  const known = new Set<string>([...LARAVEL_FEATURES, ...OPT_IN_FEATURES]);
   const out = new Set<LaravelFeature>();
   for (const part of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
     if (part === "all") LARAVEL_FEATURES.forEach((f) => out.add(f));
@@ -47,6 +57,12 @@ function parse(raw: string): ReadonlySet<LaravelFeature> {
     else if (known.has(part)) out.add(part as LaravelFeature);
   }
   return out;
+}
+
+/** Opt-in modules that are on (passed to client components, e.g. the sidebar). */
+export function enabledOptInFeatures(): OptInFeature[] {
+  const set = enabledLaravelFeatures();
+  return OPT_IN_FEATURES.filter((f) => set.has(f));
 }
 
 export function enabledLaravelFeatures(): ReadonlySet<LaravelFeature> {

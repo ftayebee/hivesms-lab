@@ -12,4 +12,6 @@ enum MessageStatus: string
     case REJECTED = 'REJECTED';
     case EXPIRED = 'EXPIRED';
     case CANCELLED = 'CANCELLED';
+    /** The provider may or may not have taken the message: kept charged, never resent, reviewed by staff. */
+    case UNKNOWN = 'UNKNOWN';
 }

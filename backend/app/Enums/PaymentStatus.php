@@ -11,4 +11,6 @@ enum PaymentStatus: string
     case FAILED = 'FAILED';
     case CANCELLED = 'CANCELLED';
     case REFUNDED = 'REFUNDED';
+    /** A manual top-up request a staff member is checking. */
+    case UNDER_REVIEW = 'UNDER_REVIEW';
 }

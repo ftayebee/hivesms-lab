@@ -156,7 +156,17 @@
                 "createdById": "char(36) NULL",
                 "createdAt": "datetime(3) NOT NULL",
                 "updatedAt": "datetime(3) NOT NULL",
-                "deletedAt": "datetime(3) NULL"
+                "deletedAt": "datetime(3) NULL",
+                "kind": "enum('standard','dynamic') NOT NULL",
+                "batchSize": "int NOT NULL",
+                "currentBatch": "int NOT NULL",
+                "unknownCount": "int NOT NULL",
+                "dynamicConfig": "longtext NULL",
+                "pausedById": "char(36) NULL",
+                "resumedAt": "datetime(3) NULL",
+                "cancelledById": "char(36) NULL",
+                "cancelReason": "varchar(500) NULL",
+                "lastBatchAt": "datetime(3) NULL"
             },
             "indexes": {
                 "PRIMARY": "UNIQUE(id)",
@@ -191,6 +201,29 @@
             "fks": {
                 "campaign_recipients_campaignId_fkey": "campaignId -> campaigns(id) ON DELETE CASCADE ON UPDATE CASCADE"
             }
+        },
+        "campaign_uploads": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "createdById": "char(36) NULL",
+                "fileKey": "varchar(255) NOT NULL",
+                "fileName": "varchar(191) NOT NULL",
+                "sizeBytes": "int NOT NULL",
+                "headers": "longtext NOT NULL",
+                "rowCount": "int NOT NULL",
+                "status": "enum('ready','used','expired') NOT NULL",
+                "campaignId": "char(36) NULL",
+                "expiresAt": "datetime(3) NOT NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "campaign_uploads_organizationId_createdAt_idx": "INDEX(organizationId,createdAt)",
+                "campaign_uploads_status_expiresAt_idx": "INDEX(status,expiresAt)"
+            },
+            "fks": []
         },
         "contacts": {
             "columns": {
@@ -410,7 +443,7 @@
                 "segments": "int NOT NULL",
                 "unitPrice": "decimal(14,4) NOT NULL",
                 "cost": "decimal(14,4) NOT NULL",
-                "status": "enum('queued','submitted','delivered','failed','rejected','expired','cancelled') NOT NULL",
+                "status": "enum('queued','submitted','delivered','failed','rejected','expired','cancelled','unknown') NOT NULL",
                 "provider": "varchar(191) NULL",
                 "providerMessageId": "varchar(255) NULL",
                 "errorCode": "varchar(255) NULL",
@@ -425,16 +458,24 @@
                 "failedAt": "datetime(3) NULL",
                 "refundedAt": "datetime(3) NULL",
                 "createdAt": "datetime(3) NOT NULL",
-                "updatedAt": "datetime(3) NOT NULL"
+                "updatedAt": "datetime(3) NOT NULL",
+                "batchNumber": "int NULL",
+                "providerStatusCode": "varchar(64) NULL",
+                "providerResponse": "longtext NULL",
+                "providerRequestedAt": "datetime(3) NULL",
+                "providerRespondedAt": "datetime(3) NULL"
             },
             "indexes": {
                 "PRIMARY": "UNIQUE(id)",
                 "messages_apiKeyId_fkey": "INDEX(apiKeyId)",
+                "messages_campaignId_batchNumber_idx": "INDEX(campaignId,batchNumber)",
                 "messages_campaignId_status_idx": "INDEX(campaignId,status)",
                 "messages_organizationId_createdAt_idx": "INDEX(organizationId,createdAt)",
+                "messages_organizationId_senderValue_createdAt_idx": "INDEX(organizationId,senderValue,createdAt)",
                 "messages_organizationId_status_idx": "INDEX(organizationId,status)",
                 "messages_provider_providerMessageId_key": "UNIQUE(provider,providerMessageId)",
                 "messages_status_nextAttemptAt_idx": "INDEX(status,nextAttemptAt)",
+                "messages_status_updatedAt_idx": "INDEX(status,updatedAt)",
                 "messages_to_idx": "INDEX(to)"
             },
             "fks": {
@@ -447,7 +488,7 @@
             "columns": {
                 "id": "char(36) NOT NULL",
                 "messageId": "char(36) NOT NULL",
-                "status": "enum('queued','submitted','delivered','failed','rejected','expired','cancelled') NOT NULL",
+                "status": "enum('queued','submitted','delivered','failed','rejected','expired','cancelled','unknown') NOT NULL",
                 "providerStatus": "varchar(255) NULL",
                 "description": "text NULL",
                 "source": "enum('system','provider_webhook','provider_poll','provider_response') NOT NULL",
@@ -572,7 +613,7 @@
                 "total": "decimal(14,4) NOT NULL",
                 "creditAmount": "decimal(14,4) NOT NULL",
                 "currency": "varchar(191) NOT NULL",
-                "status": "enum('pending','awaiting_verification','succeeded','failed','cancelled','refunded') NOT NULL",
+                "status": "enum('pending','awaiting_verification','succeeded','failed','cancelled','refunded','under_review') NOT NULL",
                 "method": "varchar(255) NULL",
                 "manualReference": "varchar(255) NULL",
                 "metadata": "longtext NOT NULL",
@@ -581,12 +622,15 @@
                 "reviewedById": "char(36) NULL",
                 "completedAt": "datetime(3) NULL",
                 "createdAt": "datetime(3) NOT NULL",
-                "updatedAt": "datetime(3) NOT NULL"
+                "updatedAt": "datetime(3) NOT NULL",
+                "paymentMethodId": "char(36) NULL"
             },
             "indexes": {
                 "PRIMARY": "UNIQUE(id)",
                 "payments_organizationId_createdAt_idx": "INDEX(organizationId,createdAt)",
                 "payments_packageId_fkey": "INDEX(packageId)",
+                "payments_paymentMethodId_idx": "INDEX(paymentMethodId)",
+                "payments_provider_manualReference_idx": "INDEX(provider,manualReference)",
                 "payments_provider_providerRef_key": "UNIQUE(provider,providerRef)",
                 "payments_status_idx": "INDEX(status)"
             },
@@ -594,6 +638,37 @@
                 "payments_organizationId_fkey": "organizationId -> organizations(id) ON DELETE CASCADE ON UPDATE CASCADE",
                 "payments_packageId_fkey": "packageId -> credit_packages(id) ON DELETE SET NULL ON UPDATE CASCADE"
             }
+        },
+        "payment_methods": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "type": "enum('bkash','nagad','rocket','bank','other') NOT NULL",
+                "displayName": "varchar(120) NOT NULL",
+                "accountNumber": "varchar(64) NOT NULL",
+                "accountName": "varchar(120) NULL",
+                "accountType": "varchar(40) NULL",
+                "bankName": "varchar(120) NULL",
+                "branchName": "varchar(120) NULL",
+                "routingNumber": "varchar(40) NULL",
+                "instructions": "text NULL",
+                "qrImage": "longtext NULL",
+                "minAmount": "decimal(14,4) NULL",
+                "maxAmount": "decimal(14,4) NULL",
+                "requireProof": "tinyint NOT NULL",
+                "requireSenderNumber": "tinyint NOT NULL",
+                "active": "tinyint NOT NULL",
+                "sortOrder": "int NOT NULL",
+                "createdById": "char(36) NULL",
+                "updatedById": "char(36) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL",
+                "deletedAt": "datetime(3) NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "payment_methods_active_sortOrder_idx": "INDEX(active,sortOrder)"
+            },
+            "fks": []
         },
         "permissions": {
             "columns": {
@@ -633,6 +708,27 @@
             "indexes": {
                 "PRIMARY": "UNIQUE(id)",
                 "pricing_plans_key_key": "UNIQUE(key)"
+            },
+            "fks": []
+        },
+        "provider_sender_ids": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "provider": "varchar(40) NOT NULL",
+                "value": "varchar(191) NOT NULL",
+                "type": "enum('masking','non_masking') NOT NULL",
+                "providerStatus": "varchar(64) NULL",
+                "source": "enum('sync','manual') NOT NULL",
+                "active": "tinyint NOT NULL",
+                "note": "varchar(255) NULL",
+                "lastSyncedAt": "datetime(3) NULL",
+                "createdById": "char(36) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "provider_sender_ids_provider_value_key": "UNIQUE(provider,value)"
             },
             "fks": []
         },

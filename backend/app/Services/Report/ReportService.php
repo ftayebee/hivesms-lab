@@ -46,7 +46,7 @@ class ReportService
         if (! empty($q['sender']) && is_string($q['sender'])) {
             $f['senderValue'] = mb_substr(trim($q['sender']), 0, 20);
         }
-        if (! empty($q['status']) && in_array(strtoupper((string) $q['status']), ['QUEUED', 'SUBMITTED', 'DELIVERED', 'FAILED', 'REJECTED', 'EXPIRED', 'CANCELLED'], true)) {
+        if (! empty($q['status']) && in_array(strtoupper((string) $q['status']), ['QUEUED', 'SUBMITTED', 'DELIVERED', 'FAILED', 'REJECTED', 'EXPIRED', 'CANCELLED', 'UNKNOWN'], true)) {
             $f['status'] = strtoupper((string) $q['status']);
         }
         $recipient = $q['recipient'] ?? $q['phone'] ?? null;
@@ -209,7 +209,7 @@ class ReportService
     public function exportMessages(TenantContext $ctx, DateRange $range, array $f, callable $write): void
     {
         $ctx->requirePermission('reports:export');
-        $write(Csv::bom().Csv::line(['created_at', 'phone', 'status', 'type', 'source', 'sender_id', 'campaign', 'segments', 'encoding', 'cost_bdt', 'refunded', 'operator', 'error', 'submitted_at', 'delivered_at', 'failed_at', 'reference', 'message_id']));
+        $write(Csv::bom().Csv::line(['created_at', 'phone', 'status', 'type', 'source', 'sender_id', 'campaign', 'segments', 'encoding', 'cost_bdt', 'refunded', 'operator', 'error', 'submitted_at', 'delivered_at', 'failed_at', 'reference', 'message_id', 'provider_reference', 'provider_code', 'batch']));
         $count = 0;
         $this->messageQuery($ctx, $range, $f)->with('campaign:id,name')->chunkById(5000, function ($rows) use ($write, &$count) {
             $out = '';
@@ -217,7 +217,7 @@ class ReportService
                 $out .= Csv::line([
                     $m->createdAt, $m->to, $m->status->value, $m->smsType->value, $m->source->value, $m->senderValue, $m->campaign?->name, $m->segments,
                     $m->encoding->value, Money::round((string) $m->cost, 2), $m->refundedAt ? 'yes' : 'no', $m->operator, $m->errorMessage,
-                    $m->submittedAt, $m->deliveredAt, $m->failedAt, $m->clientReference, $m->id,
+                    $m->submittedAt, $m->deliveredAt, $m->failedAt, $m->clientReference, $m->id, $m->providerMessageId, $m->providerStatusCode, $m->batchNumber,
                 ]);
                 $count++;
             }

@@ -23,6 +23,8 @@ export const composerSchema = z.object({
   numbers: z.string().max(3_000_000).optional().default(""),
   scheduleMode: z.enum(["now", "later"]).default("now"),
   scheduledAt: z.string().optional().default(""),
+  // Laravel validates it against the permitted sizes (campaign.processing.allowedBatchSizes).
+  batchSize: z.coerce.number().int().min(1).max(100_000).optional().catch(undefined),
 });
 
 export type ComposerInput = z.infer<typeof composerSchema>;

@@ -74,6 +74,16 @@ class MockSmsProvider extends BaseSmsProvider
         return ['amount' => 1000000, 'currency' => 'SMS', 'unit' => 'sms'];
     }
 
+    /** A fixed sample so the catalog sync can be exercised locally; never a real account. */
+    public function listSenderIds(): ?array
+    {
+        return [
+            ['value' => 'SMSFlowBD', 'type' => 'MASKING', 'status' => 'active'],
+            ['value' => 'MOCKSHOP', 'type' => 'MASKING', 'status' => 'active'],
+            ['value' => '8809600000000', 'type' => 'NON_MASKING', 'status' => 'active'],
+        ];
+    }
+
     /** X-Signature: hex HMAC-SHA256(webhookSecret, rawBody). Unsigned only outside production. */
     public function verifyWebhook(WebhookRequest $request): bool
     {

@@ -60,7 +60,7 @@ class PaymentService
             if ($payment->status->value === 'SUCCEEDED') {
                 return ['status' => 'already_completed', 'payment' => $payment];
             }
-            if (! in_array($payment->status->value, ['PENDING', 'AWAITING_VERIFICATION'], true)) {
+            if (! in_array($payment->status->value, ['PENDING', 'AWAITING_VERIFICATION', 'UNDER_REVIEW'], true)) {
                 throw new AppException(ErrorCode::CONFLICT, 'Payment is '.strtolower($payment->status->value).' and cannot be completed.');
             }
             if ($confirmedAmount !== null && $confirmedAmount !== '' && Money::cmp($confirmedAmount, (string) $payment->total) !== 0) {
@@ -76,7 +76,7 @@ class PaymentService
             if ($actor['type'] === 'ADMIN') {
                 $update['reviewedById'] = $actor['userId'];
             }
-            $claimed = Payment::query()->whereKey($payment->id)->whereIn('status', ['PENDING', 'AWAITING_VERIFICATION'])->update($update);
+            $claimed = Payment::query()->whereKey($payment->id)->whereIn('status', ['PENDING', 'AWAITING_VERIFICATION', 'UNDER_REVIEW'])->update($update);
             if (! $claimed) {
                 return ['status' => 'already_completed', 'payment' => $payment];
             }
@@ -127,7 +127,7 @@ class PaymentService
     /** @param array{type: string, userId?: ?string} $actor */
     public function fail(string $paymentId, string $reason, array $actor, string $status = 'FAILED'): bool
     {
-        $updated = Payment::query()->whereKey($paymentId)->whereIn('status', ['PENDING', 'AWAITING_VERIFICATION'])
+        $updated = Payment::query()->whereKey($paymentId)->whereIn('status', ['PENDING', 'AWAITING_VERIFICATION', 'UNDER_REVIEW'])
             ->update(['status' => $status, 'failureReason' => mb_substr($reason, 0, 500)]);
         if (! $updated) {
             return false;

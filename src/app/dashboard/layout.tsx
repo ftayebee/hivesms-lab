@@ -7,7 +7,7 @@ import { getT } from "@/i18n/server";
 import { requireTenant } from "@/lib/auth/session";
 import { db } from "@/lib/db";
 import { formatBDT } from "@/lib/format";
-import { laravelEnabled } from "@/lib/laravel/flags";
+import { enabledOptInFeatures, laravelEnabled } from "@/lib/laravel/flags";
 import { getLaravelMe } from "@/lib/laravel/session";
 
 export const metadata = { title: "Dashboard", robots: { index: false, follow: false } };
@@ -27,6 +27,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
             organization={{ id: ctx.organizationId, name: org.name, roleName: shell.roleName }}
             organizations={shell.organizations}
             permissions={ctx.permissions}
+            features={enabledOptInFeatures()}
             unreadNotifications={shell.unread}
             balanceLabel={shell.balance !== null ? formatBDT(shell.balance, locale) : null}
           >

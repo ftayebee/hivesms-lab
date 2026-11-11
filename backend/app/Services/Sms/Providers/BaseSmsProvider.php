@@ -39,4 +39,10 @@ abstract class BaseSmsProvider implements SmsProviderInterface
     {
         return null;
     }
+
+    /** Not offered by the HTTP and Automas APIs (Automas manages sender IDs in its web panel). */
+    public function listSenderIds(): ?array
+    {
+        return null;
+    }
 }

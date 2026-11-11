@@ -33,6 +33,10 @@ return [
         'phone_verification' => env('FEATURE_PHONE_VERIFICATION', false),
         // Simulated checkout. Never enable on a live site.
         'allow_mock_payments' => env('ALLOW_MOCK_PAYMENTS', false),
+        // New modules (docs/23). Off until explicitly enabled per environment.
+        'dynamic_sms' => env('FEATURE_DYNAMIC_SMS', false),
+        'manual_topups' => env('FEATURE_MANUAL_TOPUPS', false),
+        'sender_catalog' => env('FEATURE_SENDER_CATALOG', false),
     ],
 
     'sessions' => [
@@ -80,6 +84,35 @@ return [
         'optOutKeywords' => ['STOP', 'UNSUBSCRIBE', 'বন্ধ'],
         'maxBulkRecipients' => 1000,
         'maxCampaignRecipients' => 200000,
+    ],
+
+    // Defaults of the admin-editable "campaign.processing" setting (docs/21). Hard limits below are
+    // not editable at runtime: admin values are clamped to them, customers only pick from
+    // allowedBatchSizes.
+    'campaign_processing' => [
+        'defaultBatchSize' => 100,
+        'allowedBatchSizes' => [10, 100],
+        'maxDynamicRows' => (int) env('DYNAMIC_SMS_MAX_ROWS', 50000),
+        'maxBatchesPerTick' => 20,
+        'throttleMs' => 0,
+        'providerConcurrency' => ['default' => 5, 'automas' => 5, 'http' => 5, 'mock' => 10],
+        // Risk controls (a campaign is held for review only when one of these matches).
+        'risk' => [
+            'newAccountDays' => 3,
+            'newAccountMaxRecipients' => 500,
+            'transactionalBulkThreshold' => 2000,
+            'holdAboveRecipients' => 0, // 0 = off: size alone never holds a campaign
+        ],
+        'hardMaxBatchSize' => 500,
+        'hardMaxConcurrency' => 20,
+        'hardMaxDynamicRows' => 200000,
+    ],
+
+    // Defaults of the admin-editable "payments.manual" setting (docs/22).
+    'manual_payments' => [
+        'proofMaxBytes' => 5 * 1024 * 1024,
+        'maxOpenRequestsPerOrganization' => 5,
+        'suspiciousAmount' => 100000,
     ],
 
     // Defaults of the admin-editable "billing.policy" setting (src/config/pricing.ts).

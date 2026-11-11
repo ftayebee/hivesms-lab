@@ -28,6 +28,14 @@ class MessageResource extends BaseResource
             'provider' => $this->f('provider'),
             // Provider-side id: platform staff only (support lookups), never in customer responses.
             'providerMessageId' => $this->when((bool) $request->attributes->get(RequestContext::ADMIN) && $this->loaded('providerMessageId'), fn () => $this->providerMessageId),
+            // Provider reference + code as recorded from the provider's immediate answer (reports).
+            'providerReference' => $this->f('providerMessageId'),
+            'providerStatusCode' => $this->f('providerStatusCode'),
+            'providerRequestedAt' => $this->date('providerRequestedAt'),
+            'providerRespondedAt' => $this->date('providerRespondedAt'),
+            // Redacted response summary: staff only.
+            'providerResponse' => $this->when((bool) $request->attributes->get(RequestContext::ADMIN) && $this->loaded('providerResponse'), fn () => $this->providerResponse),
+            'batchNumber' => $this->f('batchNumber'),
             'errorCode' => $this->f('errorCode'),
             'errorMessage' => $this->f('errorMessage'),
             'clientReference' => $this->f('clientReference'),

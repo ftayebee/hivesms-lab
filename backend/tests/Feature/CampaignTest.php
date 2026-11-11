@@ -77,7 +77,7 @@ class CampaignTest extends TestCase
     {
         $t = $this->tenant('10');
         Contact::query()->forceCreate(['organizationId' => $t['org']->id, 'phone' => '+8801712345671', 'name' => 'Karim']);
-        $res = $this->postJson('/api/v1/app/campaigns/submit', $this->compose(), $t['headers'])->assertStatus(202)->assertJsonPath('meta.message', 'Sending started.');
+        $res = $this->postJson('/api/v1/app/campaigns/submit', $this->compose(), $t['headers'])->assertStatus(202)->assertJsonPath('meta.message', 'Campaign queued. Sending starts in batches.');
         $id = $res->json('data.id');
 
         // The launch job ran (sync queue): charged once for 3 recipients, messages queued then sent inline.

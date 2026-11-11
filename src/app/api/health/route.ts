@@ -17,7 +17,7 @@ export async function GET() {
     api = await laravelData<{ status: string; database: string }>("health", undefined, { auth: false, timeoutMs: 5_000 })
       .then((h) => (h.status === "ok" && h.database === "ok" ? ("ok" as const) : ("unreachable" as const)))
       .catch(() => "unreachable" as const);
-    if (switched.size === LARAVEL_FEATURES.length) {
+    if (LARAVEL_FEATURES.every((f) => switched.has(f))) {
       return Response.json(
         { status: api === "ok" ? "ok" : "degraded", api, laravelFeatures: [...switched], latencyMs: Date.now() - started, time: new Date().toISOString() },
         { status: api === "ok" ? 200 : 503, headers: { "Cache-Control": "no-store" } },

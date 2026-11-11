@@ -18,7 +18,12 @@ use Illuminate\Support\Str;
  *
  *   QUEUED ─► SUBMITTED ─► DELIVERED
  *     │          └──────► FAILED | REJECTED | EXPIRED
- *     └─► FAILED | REJECTED | CANCELLED | DELIVERED
+ *     ├─► FAILED | REJECTED | CANCELLED | DELIVERED
+ *     └─► UNKNOWN ─► SUBMITTED | DELIVERED | FAILED | REJECTED   (staff resolution / late report)
+ *
+ * UNKNOWN = the provider may have taken the message (timeout, dropped connection, worker died
+ * mid-request). It stays charged, is never resent and is only refunded when a staff member
+ * resolves it as failed with an explicit refund (refund => true).
  *
  * Terminal statuses never change, so late or replayed provider events cannot overwrite a final
  * result. Every received event is stored in message_events under a unique dedupeKey — that is
@@ -29,13 +34,17 @@ class DeliveryService
 {
     private const ALLOWED_FROM = [
         'QUEUED' => [],
-        'SUBMITTED' => ['QUEUED'],
-        'DELIVERED' => ['QUEUED', 'SUBMITTED'],
-        'FAILED' => ['QUEUED', 'SUBMITTED'],
-        'REJECTED' => ['QUEUED', 'SUBMITTED'],
+        'SUBMITTED' => ['QUEUED', 'UNKNOWN'],
+        'DELIVERED' => ['QUEUED', 'SUBMITTED', 'UNKNOWN'],
+        'FAILED' => ['QUEUED', 'SUBMITTED', 'UNKNOWN'],
+        'REJECTED' => ['QUEUED', 'SUBMITTED', 'UNKNOWN'],
         'EXPIRED' => ['QUEUED', 'SUBMITTED'],
         'CANCELLED' => ['QUEUED'],
+        'UNKNOWN' => ['QUEUED'],
     ];
+
+    /** Message columns a status update may also write (provider response capture). */
+    private const EXTRA_FIELDS = ['providerStatusCode', 'providerResponse', 'providerRequestedAt', 'providerRespondedAt'];
 
     public const TERMINAL_FAILURES = ['FAILED', 'REJECTED', 'EXPIRED', 'CANCELLED'];
 
@@ -46,7 +55,7 @@ class DeliveryService
     ) {}
 
     /**
-     * @param  array{messageId: string, status: string, source: string, dedupeKey: string, occurredAt?: ?CarbonImmutable, providerStatus?: ?string, errorCode?: ?string, description?: ?string, provider?: ?string, providerMessageId?: ?string, payload?: mixed, refund?: ?bool}  $u
+     * @param  array{messageId: string, status: string, source: string, dedupeKey: string, occurredAt?: ?CarbonImmutable, providerStatus?: ?string, errorCode?: ?string, description?: ?string, provider?: ?string, providerMessageId?: ?string, payload?: mixed, refund?: ?bool, fields?: array<string, mixed>}  $u
      * @return 'applied'|'duplicate'|'stale'|'not_found'
      */
     public function apply(array $u): string
@@ -57,9 +66,13 @@ class DeliveryService
 
         // Retried as a whole if InnoDB picks it as a deadlock victim (it was rolled back: safe).
         $outcome = DB::transaction(function () use ($u, $policy, $occurredAt, $ts) {
-            $locked = DB::selectOne('SELECT id, status FROM messages WHERE id = ? FOR UPDATE', [$u['messageId']]);
+            $locked = DB::selectOne('SELECT id, status, provider FROM messages WHERE id = ? FOR UPDATE', [$u['messageId']]);
             if (! $locked) {
                 return 'not_found';
+            }
+            // A worker marked it in flight between our read and this lock: leave it to its outcome.
+            if (($u['notInFlight'] ?? false) && $locked->status === 'QUEUED' && $locked->provider !== null) {
+                return 'stale';
             }
             $inserted = MessageEvent::query()->insertOrIgnore([
                 'id' => (string) Str::uuid(),
@@ -95,7 +108,13 @@ class DeliveryService
             if (! empty($u['description']) && ! in_array($u['status'], ['DELIVERED', 'SUBMITTED'], true)) {
                 $data['errorMessage'] = $u['description'];
             }
-            if ($u['status'] === 'SUBMITTED') {
+            foreach (self::EXTRA_FIELDS as $f) {
+                if (array_key_exists($f, $u['fields'] ?? [])) {
+                    $v = $u['fields'][$f];
+                    $data[$f] = $f === 'providerResponse' && $v !== null ? json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) : $v;
+                }
+            }
+            if ($u['status'] === 'SUBMITTED' || ($u['status'] === 'DELIVERED' && $previous === 'UNKNOWN')) {
                 $data['submittedAt'] = $ts;
             }
             if ($u['status'] === 'DELIVERED') {
@@ -111,8 +130,9 @@ class DeliveryService
             $msg = Message::query()->findOrFail($u['messageId'], ['id', 'organizationId', 'campaignId', 'to', 'segments', 'cost', 'refundedAt', 'errorCode', 'errorMessage', 'clientReference']);
 
             // Refunds: always when the message never left the platform; otherwise per policy.
-            $shouldRefund = $isFailure && ($u['refund'] ?? true) !== false && Money::isPositive((string) $msg->cost) && ! $msg->refundedAt
-                && ($previous === 'QUEUED' || $policy['refundFailedMessages']);
+            // An UNKNOWN message may have been delivered: refunded only on an explicit staff decision.
+            $refundAllowed = $previous === 'UNKNOWN' ? ($u['refund'] ?? false) === true : ($u['refund'] ?? true) !== false && ($previous === 'QUEUED' || $policy['refundFailedMessages']);
+            $shouldRefund = $isFailure && $refundAllowed && Money::isPositive((string) $msg->cost) && ! $msg->refundedAt;
             if ($shouldRefund) {
                 $this->wallet->credit([
                     'organizationId' => $msg->organizationId,
@@ -130,7 +150,13 @@ class DeliveryService
                 if ($previous === 'QUEUED') {
                     $inc[] = 'queuedCount = GREATEST(queuedCount - 1, 0)';
                 }
-                if ($u['status'] === 'SUBMITTED' || ($u['status'] === 'DELIVERED' && $previous === 'QUEUED')) {
+                if ($previous === 'UNKNOWN') {
+                    $inc[] = 'unknownCount = GREATEST(unknownCount - 1, 0)';
+                }
+                if ($u['status'] === 'UNKNOWN') {
+                    $inc[] = 'unknownCount = unknownCount + 1';
+                }
+                if ($u['status'] === 'SUBMITTED' || ($u['status'] === 'DELIVERED' && in_array($previous, ['QUEUED', 'UNKNOWN'], true))) {
                     $inc[] = 'submittedCount = submittedCount + 1';
                 }
                 if ($u['status'] === 'DELIVERED') {
@@ -190,11 +216,13 @@ class DeliveryService
     /** Cancels (and refunds) still-queued messages of a cancelled campaign; returns how many remain. */
     public function cancelQueuedOfCampaign(string $campaignId, int $limit): int
     {
-        $ids = Message::query()->where('campaignId', $campaignId)->where('status', 'QUEUED')->limit($limit)->pluck('id');
+        // In-flight messages (provider already set) are left alone: they reach their real outcome
+        // (accepted/failed), or UNKNOWN if the worker dies — never cancelled-and-refunded mid-request.
+        $ids = Message::query()->where('campaignId', $campaignId)->where('status', 'QUEUED')->whereNull('provider')->limit($limit)->pluck('id');
         foreach ($ids as $id) {
-            $this->apply(['messageId' => $id, 'status' => 'CANCELLED', 'source' => 'SYSTEM', 'dedupeKey' => "cancel:{$id}", 'description' => 'Campaign cancelled']);
+            $this->apply(['messageId' => $id, 'status' => 'CANCELLED', 'source' => 'SYSTEM', 'dedupeKey' => "cancel:{$id}", 'description' => 'Campaign cancelled', 'notInFlight' => true]);
         }
 
-        return Message::query()->where('campaignId', $campaignId)->where('status', 'QUEUED')->count();
+        return Message::query()->where('campaignId', $campaignId)->where('status', 'QUEUED')->whereNull('provider')->count();
     }
 }

@@ -29,9 +29,51 @@ class NotificationService
         'api_key.created' => ['API key created or revoked', 'api_keys:read', true],
         'support.updated' => ['Support ticket updates', 'support:read', true],
         'team.changed' => ['Team membership changes', 'team:read', false],
+        'campaign.lifecycle' => ['Campaign started, paused or resumed', 'campaigns:read', false],
+        'campaign.partial' => ['Campaign finished with failed or unconfirmed messages', 'campaigns:read', true],
+        'payment.topup' => ['Manual top-up request updates', 'billing:read', true],
+    ];
+
+    /**
+     * Platform staff alerts: in-app rows with organizationId NULL for staff holding one of the roles,
+     * emailed to SUPER_ADMIN by default. type => [label, roles, emailByDefault]
+     */
+    public const STAFF_TYPES = [
+        'staff.payment_request' => ['New manual payment request', ['ADMIN', 'SUPER_ADMIN'], false],
+        'staff.payment_suspicious' => ['Suspicious payment submission', ['SUPER_ADMIN'], true],
+        'staff.campaign_risk' => ['Campaign held by a risk control', ['SUPPORT', 'ADMIN', 'SUPER_ADMIN'], false],
+        'staff.unconfirmed_messages' => ['Messages with an unconfirmed provider outcome', ['ADMIN', 'SUPER_ADMIN'], false],
     ];
 
     public function __construct(private readonly Mailer $mailer) {}
+
+    /** Never throws. Called on state transitions that happen once, so retries never duplicate it. */
+    public function notifyStaff(string $type, string $title, string $body, ?string $link = null): void
+    {
+        try {
+            [, $roles, $emailDefault] = self::STAFF_TYPES[$type];
+            $users = User::query()->whereIn('platformRole', $roles)->where('status', 'ACTIVE')->get(['id', 'email', 'name', 'platformRole']);
+            if ($users->isEmpty()) {
+                return;
+            }
+            $now = now()->format('Y-m-d H:i:s.v');
+            Notification::query()->insert($users->map(fn (User $u) => [
+                'id' => (string) Str::uuid(), 'organizationId' => null, 'userId' => $u->id, 'type' => $type,
+                'title' => mb_substr($title, 0, 255), 'body' => $body, 'link' => $link, 'createdAt' => $now,
+            ])->all());
+            if ($emailDefault) {
+                foreach ($users->filter(fn (User $u) => ($u->platformRole?->value ?? $u->platformRole) === 'SUPER_ADMIN') as $u) {
+                    $this->mailer->send($u->email, [
+                        'subject' => $title, 'tag' => $type,
+                        'text' => "{$body}\n\n".($link ? rtrim((string) config('smsflow.frontend_url'), '/').$link : ''),
+                        'html' => '<p>'.e($body).'</p>'.($link ? '<p><a href="'.e(rtrim((string) config('smsflow.frontend_url'), '/').$link).'">Open</a></p>' : ''),
+                    ]);
+                }
+            }
+        } catch (Throwable $e) {
+            Log::error('staff notification failed', ['type' => $type, 'error' => $e->getMessage()]);
+        }
+    }
 
     /**
      * @param  list<string>|null  $userIds  explicit recipients; otherwise active members holding the type's permission

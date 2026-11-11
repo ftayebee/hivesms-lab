@@ -5,6 +5,7 @@ export type NavIconName =
   | "LayoutDashboard"
   | "Megaphone"
   | "Send"
+  | "FileSpreadsheet"
   | "BookUser"
   | "LayoutTemplate"
   | "BadgeCheck"
@@ -21,6 +22,8 @@ export interface DashboardNavItem {
   href: string;
   icon: NavIconName;
   permission?: Permission;
+  /** Shown only when this opt-in module is enabled (LARAVEL_FEATURES, docs/23). */
+  feature?: "dynamicSms" | "manualTopups" | "senderCatalog";
 }
 
 export const dashboardNav: { section?: keyof Messages["dashboardNav"]; items: DashboardNavItem[] }[] = [
@@ -29,6 +32,7 @@ export const dashboardNav: { section?: keyof Messages["dashboardNav"]; items: Da
       { key: "overview", href: "/dashboard", icon: "LayoutDashboard", permission: "dashboard:read" },
       { key: "campaigns", href: "/dashboard/campaigns", icon: "Megaphone", permission: "campaigns:read" },
       { key: "send", href: "/dashboard/send", icon: "Send", permission: "sms:send" },
+      { key: "dynamicSms", href: "/dashboard/dynamic-sms", icon: "FileSpreadsheet", permission: "sms:send", feature: "dynamicSms" },
     ],
   },
   {

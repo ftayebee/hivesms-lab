@@ -10,6 +10,7 @@ use App\Http\Resources\UserResource;
 use App\Models\AbuseReport;
 use App\Models\Campaign;
 use App\Models\ContactRequest;
+use App\Models\Message;
 use App\Models\Organization;
 use App\Models\Payment;
 use App\Models\SenderId;
@@ -53,6 +54,8 @@ class AdminPlatformController extends ApiController
             'campaignsInReview' => Campaign::query()->where('status', 'PENDING_REVIEW')->count(),
             'pendingSenderIds' => SenderId::query()->where('status', 'PENDING')->count(),
             'paymentsAwaitingVerification' => Payment::query()->where('status', 'AWAITING_VERIFICATION')->count(),
+            'manualTopupsOpen' => Payment::query()->where('provider', 'manual')->whereNotNull('paymentMethodId')->whereIn('status', ['AWAITING_VERIFICATION', 'UNDER_REVIEW'])->count(),
+            'unconfirmedMessages' => Message::query()->where('status', 'UNKNOWN')->count(),
             'openTickets' => SupportTicket::query()->where('status', 'OPEN')->count(),
             'newAbuseReports' => AbuseReport::query()->where('status', 'NEW')->count(),
         ]);
@@ -113,7 +116,7 @@ class AdminPlatformController extends ApiController
     {
         $q = $request->validate([
             'organizationId' => ['nullable', 'uuid'], 'campaignId' => ['nullable', 'uuid'], 'to' => ['nullable', 'string', 'max:30'],
-            'status' => ['nullable', 'in:QUEUED,SUBMITTED,DELIVERED,FAILED,REJECTED,EXPIRED,CANCELLED'],
+            'status' => ['nullable', 'in:QUEUED,SUBMITTED,DELIVERED,FAILED,REJECTED,EXPIRED,CANCELLED,UNKNOWN'],
             'provider' => ['nullable', 'string', 'max:191'],
         ]);
         if (! empty($q['to'])) {

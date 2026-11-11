@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CampaignKind;
 use App\Enums\CampaignStatus;
 use App\Enums\SenderType;
 use App\Enums\SmsEncoding;
@@ -57,6 +58,10 @@ class Campaign extends BaseModel
         'estimatedCost' => '0',
         'actualCost' => '0',
         'refundedAmount' => '0',
+        'kind' => 'STANDARD',
+        'batchSize' => 100,
+        'currentBatch' => 0,
+        'unknownCount' => 0,
     ];
 
     protected function casts(): array
@@ -86,6 +91,13 @@ class Campaign extends BaseModel
             'createdAt' => 'datetime',
             'updatedAt' => 'datetime',
             'deletedAt' => 'datetime',
+            'kind' => CampaignKind::class,
+            'batchSize' => 'integer',
+            'currentBatch' => 'integer',
+            'unknownCount' => 'integer',
+            'dynamicConfig' => 'array',
+            'resumedAt' => 'datetime',
+            'lastBatchAt' => 'datetime',
         ];
     }
 

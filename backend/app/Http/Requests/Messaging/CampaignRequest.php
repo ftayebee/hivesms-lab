@@ -25,6 +25,7 @@ class CampaignRequest extends ApiRequest
             'numbers' => ['nullable'],
             'scheduleMode' => ['nullable', 'in:now,later'],
             'scheduledAt' => ['nullable', 'string', 'max:40'],
+            'batchSize' => ['nullable', 'integer', 'min:1', 'max:100000'],
         ];
     }
 
@@ -55,6 +56,7 @@ class CampaignRequest extends ApiRequest
             'numbers' => (string) ($numbers ?? ''),
             'scheduleMode' => $this->input('scheduleMode') ?: 'now',
             'scheduledAt' => (string) ($this->input('scheduledAt') ?? ''),
+            'batchSize' => $this->filled('batchSize') ? (int) $this->input('batchSize') : null,
         ];
     }
 }

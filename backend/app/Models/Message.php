@@ -77,6 +77,10 @@ class Message extends BaseModel
             'deliveredAt' => 'datetime',
             'failedAt' => 'datetime',
             'refundedAt' => 'datetime',
+            'batchNumber' => 'integer',
+            'providerResponse' => 'array',
+            'providerRequestedAt' => 'datetime',
+            'providerRespondedAt' => 'datetime',
             'createdAt' => 'datetime',
             'updatedAt' => 'datetime',
         ];

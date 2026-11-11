@@ -38,6 +38,8 @@ export interface ComposerProps {
   balance: number;
   quietHours: { start: number; end: number } | null;
   optOutHint: string;
+  /** Permitted batch sizes (Laravel); hidden when absent. */
+  batching?: { default: number; allowed: number[] };
   initial?: {
     id?: string;
     name?: string;
@@ -53,7 +55,7 @@ export interface ComposerProps {
 
 const VARIABLES = ["name", "company", "phone", "email"];
 
-export function SmsComposer({ senders, groups, templates, rules, rates, balance, quietHours, optOutHint, initial }: ComposerProps) {
+export function SmsComposer({ senders, groups, templates, rules, rates, balance, quietHours, optOutHint, batching, initial }: ComposerProps) {
   const router = useRouter();
   const [id, setId] = useState(initial?.id);
   const [name, setName] = useState(initial?.name ?? "");
@@ -65,6 +67,7 @@ export function SmsComposer({ senders, groups, templates, rules, rates, balance,
   const [groupIds, setGroupIds] = useState<string[]>(initial?.groupIds ?? []);
   const [numbers, setNumbers] = useState(initial?.numbers ?? "");
   const [scheduleMode, setScheduleMode] = useState<"now" | "later">(initial?.scheduledAt ? "later" : "now");
+  const [batchSize, setBatchSize] = useState(batching?.default ?? 0);
   const [scheduledAt, setScheduledAt] = useState(initial?.scheduledAt ? dateToDhakaLocalInput(new Date(initial.scheduledAt)) : "");
   const [minSchedule] = useState(() => dateToDhakaLocalInput(new Date(Date.now() + 5 * 60_000)));
   const [review, setReview] = useState<CampaignEstimate | null>(null);
@@ -103,6 +106,7 @@ export function SmsComposer({ senders, groups, templates, rules, rates, balance,
     fd.set("numbers", numbers);
     fd.set("scheduleMode", scheduleMode);
     fd.set("scheduledAt", scheduledAt);
+    if (batching && batchSize) fd.set("batchSize", String(batchSize));
     return fd;
   }
 
@@ -347,7 +351,7 @@ export function SmsComposer({ senders, groups, templates, rules, rates, balance,
           <CardContent className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="When to send">
               {[
-                { v: "now" as const, icon: Send, t: "Send now", d: "Starts right after confirmation (or after review)." },
+                { v: "now" as const, icon: Send, t: "Send now", d: "Queued right after confirmation and sent in batches." },
                 { v: "later" as const, icon: CalendarClock, t: "Schedule", d: "Pick a date and time in Bangladesh time." },
               ].map((o) => (
                 <label key={o.v} className={cn("flex cursor-pointer gap-3 rounded-lg border p-3", scheduleMode === o.v ? "border-primary bg-primary-soft/60" : "border-border hover:bg-muted/50")}>
@@ -360,6 +364,17 @@ export function SmsComposer({ senders, groups, templates, rules, rates, balance,
                 </label>
               ))}
             </div>
+            {batching && batching.allowed.length > 0 && (
+              <Field label="Batch size" hint="Large campaigns are sent in batches; you can pause or cancel between batches." error={errors.batchSize} className="max-w-xs">
+                <NativeSelect value={String(batchSize)} onChange={(e) => setBatchSize(Number(e.target.value))}>
+                  {batching.allowed.map((b) => (
+                    <option key={b} value={b}>
+                      {b} messages per batch
+                    </option>
+                  ))}
+                </NativeSelect>
+              </Field>
+            )}
             {scheduleMode === "later" && (
               <Field label="Date and time (Asia/Dhaka)" required error={errors.scheduledAt} className="max-w-xs">
                 <DatePicker value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} min={minSchedule} />
@@ -462,7 +477,7 @@ export function SmsComposer({ senders, groups, templates, rules, rates, balance,
                   </Alert>
                 )}
                 {review.requiresReview && (
-                  <Alert tone="warning" title="This campaign will be reviewed first">
+                  <Alert tone="warning" title="This campaign gets a safety check first">
                     <ul className="list-disc pl-4">
                       {review.reviewReasons.map((r) => (
                         <li key={r}>{r}</li>
@@ -482,7 +497,7 @@ export function SmsComposer({ senders, groups, templates, rules, rates, balance,
                   Back to edit
                 </Button>
                 <Button onClick={() => run("submit")} loading={busy && pendingAction === "submit"} disabled={!review.sufficientBalance}>
-                  {review.requiresReview ? "Submit for review" : review.scheduledAt ? "Schedule campaign" : `Send to ${formatNumber(review.included)}`}
+                  {review.requiresReview ? "Submit for safety check" : review.scheduledAt ? "Schedule campaign" : `Send to ${formatNumber(review.included)}`}
                 </Button>
               </DialogFooter>
             </>

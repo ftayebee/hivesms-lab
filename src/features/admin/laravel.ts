@@ -65,8 +65,8 @@ export async function overview() {
 }
 
 export async function badges() {
-  const b = await laravelData<{ campaignsInReview: number; pendingSenderIds: number; paymentsAwaitingVerification: number; openTickets: number; newAbuseReports: number }>("admin/badges");
-  return { campaigns: b.campaignsInReview, senders: b.pendingSenderIds, payments: b.paymentsAwaitingVerification, tickets: b.openTickets, abuse: b.newAbuseReports };
+  const b = await laravelData<{ campaignsInReview: number; pendingSenderIds: number; paymentsAwaitingVerification: number; openTickets: number; newAbuseReports: number; manualTopupsOpen?: number; unconfirmedMessages?: number }>("admin/badges");
+  return { campaigns: b.campaignsInReview, senders: b.pendingSenderIds, payments: b.paymentsAwaitingVerification, tickets: b.openTickets, abuse: b.newAbuseReports, topups: b.manualTopupsOpen ?? 0, unconfirmed: b.unconfirmedMessages ?? 0 };
 }
 
 // ─── Customers ───

@@ -143,7 +143,7 @@ class DeliveryAndWebhookTest extends TestCase
         $k = $this->apiKey($t['org']);
         $id = $this->postJson('/api/v1/sms/send', ['to' => '01712345678', 'message' => 'hello'], $k['headers'])->json('data.message_id');
         Message::query()->whereKey($id)->update(['campaignId' => $c->id]);
-        $this->dispatcher()->processQueue();
+        $this->dispatcher()->processCampaignBatches(1); // campaign messages are sent in batches (docs/21)
         $pmid = Message::query()->whereKey($id)->value('providerMessageId');
         $payload = ['events' => [['message_id' => $pmid, 'status' => 'DELIVRD', 'timestamp' => '2026-10-07T06:00:05Z']]];
 

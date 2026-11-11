@@ -69,7 +69,7 @@ class AdminReviewController extends ApiController
 
     public function payments(Request $request): JsonResponse
     {
-        $q = $request->validate(['status' => ['nullable', 'in:PENDING,AWAITING_VERIFICATION,SUCCEEDED,FAILED,CANCELLED,REFUNDED']]);
+        $q = $request->validate(['status' => ['nullable', 'in:PENDING,AWAITING_VERIFICATION,UNDER_REVIEW,SUCCEEDED,FAILED,CANCELLED,REFUNDED']]);
 
         return $this->paginated($request, $this->admin->payments($q['status'] ?? null, $this->page($request)), PaymentResource::class);
     }

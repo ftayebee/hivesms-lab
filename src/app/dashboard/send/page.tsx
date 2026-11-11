@@ -85,6 +85,7 @@ export default async function SendPage({ searchParams }: PageProps<"/dashboard/s
         balance={balance.toNumber()}
         quietHours={config.promotionalQuietHours}
         optOutHint={config.promotionalOptOutText}
+        batching={config.batching}
         initial={initial}
       />
     </>

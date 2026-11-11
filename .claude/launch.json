@@ -22,6 +22,36 @@
       "autoPort": true
     },
     {
+      "name": "api-local",
+      "runtimeExecutable": "php",
+      "runtimeArgs": ["backend/artisan", "serve", "--host=127.0.0.1", "--port=8001"],
+      "port": 8001,
+      "env": {
+        "DB_DATABASE": "smsflow_api_test2",
+        "SMS_PROVIDER": "mock",
+        "PAYMENT_PROVIDERS": "manual",
+        "QUEUE_CONNECTION": "sync",
+        "FEATURE_DYNAMIC_SMS": "true",
+        "FEATURE_MANUAL_TOPUPS": "true",
+        "FEATURE_SENDER_CATALOG": "true",
+        "FRONTEND_URL": "http://localhost:3220"
+      }
+    },
+    {
+      "name": "web-laravel",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "--port", "3220"],
+      "port": 3220,
+      "env": {
+        "PORT": "3220",
+        "APP_URL": "http://localhost:3220",
+        "LARAVEL_API_URL": "http://127.0.0.1:8001",
+        "LARAVEL_FEATURES": "all,dynamicSms,manualTopups,senderCatalog",
+        "WORKER_IN_PROCESS": "false",
+        "SMS_PROVIDER": "mock"
+      }
+    },
+    {
       "name": "admin-local",
       "runtimeExecutable": "npm",
       "runtimeArgs": [

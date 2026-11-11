@@ -84,6 +84,7 @@ export const bn: DeepPartial<Messages> = {
     overview: "ড্যাশবোর্ড",
     campaigns: "ক্যাম্পেইন",
     send: "এসএমএস পাঠান",
+    dynamicSms: "ডাইনামিক এসএমএস",
     contacts: "কন্টাক্ট",
     templates: "টেমপ্লেট",
     senderIds: "সেন্ডার আইডি",
@@ -97,7 +98,7 @@ export const bn: DeepPartial<Messages> = {
   },
   status: {
     QUEUED: "সারিতে",
-    SUBMITTED: "পাঠানো হয়েছে",
+    SUBMITTED: "গৃহীত",
     DELIVERED: "পৌঁছেছে",
     FAILED: "ব্যর্থ",
     SCHEDULED: "নির্ধারিত",

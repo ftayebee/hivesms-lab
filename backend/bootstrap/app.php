@@ -7,6 +7,7 @@ use App\Http\Middleware\AuthenticateApiKey;
 use App\Http\Middleware\AuthenticateSession;
 use App\Http\Middleware\Idempotency;
 use App\Http\Middleware\RateLimit;
+use App\Http\Middleware\RequireFeature;
 use App\Http\Middleware\RequirePlatformPermission;
 use App\Http\Middleware\RequireVerifiedEmail;
 use App\Http\Middleware\ResolveTenant;
@@ -33,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'idempotent' => Idempotency::class,
             'ratelimit' => RateLimit::class,
             'verified.email' => RequireVerifiedEmail::class,
+            'feature' => RequireFeature::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

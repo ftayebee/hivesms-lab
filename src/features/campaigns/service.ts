@@ -217,9 +217,9 @@ export async function resumeCampaign(ctx: TenantContext, id: string) {
   await audit({ action: "campaign.resume", actor: actorOf(ctx), organizationId: ctx.organizationId, targetType: "campaign", targetId: id });
 }
 
-export async function cancelCampaign(ctx: TenantContext, id: string) {
+export async function cancelCampaign(ctx: TenantContext, id: string, reason?: string) {
   requirePermission(ctx, "campaigns:write");
-  if (laravelEnabled("campaigns")) return viaLaravel.op(id, "cancel");
+  if (laravelEnabled("campaigns")) return viaLaravel.op(id, "cancel", reason);
   const c = await getOwned(ctx, id);
   const r = await db.campaign.updateMany({
     where: { id, status: { in: ["DRAFT", "PENDING_REVIEW", "SCHEDULED", "PROCESSING", "PAUSED"] } },
@@ -325,6 +325,7 @@ export async function getCampaignDetail(ctx: TenantContext, id: string) {
     skipped: Object.fromEntries(recipientSkips.map((r) => [r.status, r._count])) as Record<string, number>,
     failures: failures.map((f) => ({ reason: f.reason, count: Number(f.n) })),
     operators: operators.map((o) => ({ operator: o.operator ?? "Unknown", total: Number(o.total), delivered: Number(o.delivered) })),
+    progress: null as import("./laravel").CampaignProgress | null,
     timeline: timeline.map((t) => ({ id: t.id, action: t.action, at: t.createdAt, actor: t.actor?.name ?? (t.actorType === "SYSTEM" ? "System" : t.actorType === "ADMIN" ? "Review team" : null), metadata: t.metadata as Record<string, unknown> })),
   };
 }

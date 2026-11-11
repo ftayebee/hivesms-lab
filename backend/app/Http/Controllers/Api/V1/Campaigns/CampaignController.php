@@ -112,17 +112,18 @@ class CampaignController extends ApiController
             LaunchCampaignJob::dispatch($c->id);
         }
         $message = $c->status->value === 'PENDING_REVIEW'
-            ? "Submitted for review. We'll notify you when it's approved."
-            : ($c->scheduledAt ? 'Campaign scheduled.' : 'Sending started.');
+            ? "Held for a safety check. We'll notify you as soon as it is cleared."
+            : ($c->scheduledAt ? 'Campaign scheduled.' : 'Campaign queued. Sending starts in batches.');
 
         return $this->resource($request, CampaignResource::class, $c, 202, ['message' => $message]);
     }
 
     public function cancel(Request $request, string $id): JsonResponse
     {
-        $this->campaigns->cancel($this->tenant($request), $id);
+        $data = $request->validate(['reason' => ['nullable', 'string', 'max:500']]);
+        $this->campaigns->cancel($this->tenant($request), $id, $data['reason'] ?? null);
 
-        return $this->ok(['message' => 'Campaign cancelled. Unsent messages are refunded.']);
+        return $this->ok(['message' => 'Campaign cancelled. Messages that were never sent are refunded; sent and unconfirmed messages keep their charge.']);
     }
 
     public function pause(Request $request, string $id): JsonResponse
@@ -157,13 +158,23 @@ class CampaignController extends ApiController
     {
         $d = $this->campaigns->detail($this->tenant($request), $id);
 
-        return $this->ok(['status' => $d['campaign']->status->value, 'stats' => $d['stats'], 'skipped' => (object) $d['skipped']]);
+        return $this->ok(['status' => $d['campaign']->status->value, 'stats' => $d['stats'], 'progress' => $d['progress'], 'skipped' => (object) $d['skipped']]);
+    }
+
+    /** GET /app/campaigns/{id}/progress: batch progress from local records only (cheap polling). */
+    public function progress(Request $request, string $id): JsonResponse
+    {
+        $ctx = $this->tenant($request);
+        $ctx->requirePermission('campaigns:read');
+        $c = $this->campaigns->owned($ctx, $id);
+
+        return $this->ok(['status' => $c->status->value, 'progress' => $this->campaigns->progressOf($c)]);
     }
 
     /** GET /app/campaigns/{id}/messages?status=&page=&pageSize= */
     public function messages(Request $request, string $id): JsonResponse
     {
-        $q = $request->validate(['status' => ['nullable', 'in:QUEUED,SUBMITTED,DELIVERED,FAILED,REJECTED,EXPIRED,CANCELLED'], 'pageSize' => ['nullable', 'integer', 'min:10', 'max:100']]);
+        $q = $request->validate(['status' => ['nullable', 'in:QUEUED,SUBMITTED,DELIVERED,FAILED,REJECTED,EXPIRED,CANCELLED,UNKNOWN'], 'pageSize' => ['nullable', 'integer', 'min:10', 'max:100']]);
 
         return $this->paginated($request, $this->campaigns->messages($this->tenant($request), $id, $q['status'] ?? null, $this->page($request), (int) ($q['pageSize'] ?? 25)), MessageResource::class);
     }
@@ -191,6 +202,7 @@ class CampaignController extends ApiController
 
         return $this->ok([
             'segmentation' => $policy['segmentation'],
+            'batching' => ['default' => $settings->campaignProcessing()['defaultBatchSize'], 'allowed' => $settings->campaignProcessing()['allowedBatchSizes']],
             'promotionalQuietHours' => $policy['promotionalQuietHours'],
             'promotionalOptOutText' => $policy['promotionalOptOutText'],
             'rates' => [

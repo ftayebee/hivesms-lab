@@ -8,9 +8,12 @@ use App\Models\Payment;
 use App\Models\Session;
 use App\Models\VerificationToken;
 use App\Services\Campaign\CampaignRunner;
+use App\Services\Campaign\DynamicSmsService;
 use App\Services\Platform\RateLimiter;
+use App\Services\Platform\SettingsService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * One unit of background work (port of services/messaging/worker.ts). Safe to run concurrently
@@ -43,6 +46,7 @@ class WorkerService
         $claimed = $submitted = 0;
         $maxBatches ??= (int) config('smsflow.sms.worker_max_batches');
         $batchSize ??= (int) config('smsflow.sms.worker_batch_size');
+        // API / single sends (no campaign).
         for ($i = 0; $i < $maxBatches; $i++) {
             $r = $this->dispatcher->processQueue($batchSize);
             $claimed += $r['claimed'];
@@ -51,6 +55,10 @@ class WorkerService
                 break;
             }
         }
+        // Campaigns: in their own batch size, round-robin across campaigns (docs/21).
+        $batches = $this->dispatcher->processCampaignBatches(app(SettingsService::class)->campaignProcessing()['maxBatchesPerTick'], $deadline);
+        $claimed += $batches['claimed'];
+        $submitted += $batches['submitted'];
 
         $this->cancelLeftoverMessages();
         $polled = $this->dispatcher->pollDeliveryStatuses();
@@ -61,6 +69,8 @@ class WorkerService
             'campaignsLaunched' => $launched,
             'claimed' => $claimed,
             'submitted' => $submitted,
+            'campaignBatches' => $batches['batches'],
+            'unconfirmed' => $batches['unknown'],
             'statusUpdates' => $polled['updated'],
             'campaignsCompleted' => $completed,
             'webhooksDelivered' => $hooks['delivered'],
@@ -76,9 +86,9 @@ class WorkerService
     /** Cancelled campaigns may still have queued messages (large sends): cancel and refund them. */
     private function cancelLeftoverMessages(): void
     {
-        $ids = Message::query()->where('status', 'QUEUED')->whereHas('campaign', fn ($q) => $q->withTrashed()->where('status', 'CANCELLED'))->limit(500)->pluck('id');
+        $ids = Message::query()->where('status', 'QUEUED')->whereNull('provider')->whereHas('campaign', fn ($q) => $q->withTrashed()->where('status', 'CANCELLED'))->limit(500)->pluck('id');
         foreach ($ids as $id) {
-            $this->delivery->apply(['messageId' => $id, 'status' => 'CANCELLED', 'source' => 'SYSTEM', 'dedupeKey' => "cancel:{$id}", 'description' => 'Campaign cancelled']);
+            $this->delivery->apply(['messageId' => $id, 'status' => 'CANCELLED', 'source' => 'SYSTEM', 'dedupeKey' => "cancel:{$id}", 'description' => 'Campaign cancelled', 'notInFlight' => true]);
         }
     }
 
@@ -96,6 +106,8 @@ class WorkerService
             'rateLimits' => $this->rateLimiter->purgeExpired(),
             'idempotencyKeys' => IdempotencyKey::query()->where('expiresAt', '<', $now)->delete(),
             'tokens' => VerificationToken::query()->where('expiresAt', '<', now()->subDays(7)->format('Y-m-d H:i:s.v'))->delete(),
+            // Dynamic SMS CSVs: deleted once launched (rows then live in campaign_recipients/messages) or expired.
+            'dynamicUploads' => Schema::hasTable('campaign_uploads') ? app(DynamicSmsService::class)->cleanup() : 0,
         ];
         Log::info('housekeeping', $summary);
 

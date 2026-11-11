@@ -129,6 +129,54 @@ class SettingsService
         return array_merge(config('smsflow.billing_policy'), is_array($override) ? $override : []);
     }
 
+    /**
+     * Campaign batch processing and risk thresholds, clamped to the non-editable hard limits.
+     *
+     * @return array{defaultBatchSize: int, allowedBatchSizes: list<int>, maxDynamicRows: int, maxBatchesPerTick: int, throttleMs: int, providerConcurrency: array<string, int>, risk: array<string, int>}
+     */
+    public function campaignProcessing(): array
+    {
+        $d = config('smsflow.campaign_processing');
+        $o = $this->readRaw('campaign.processing');
+        $o = is_array($o) ? $o : [];
+        $hardBatch = (int) $d['hardMaxBatchSize'];
+        $allowed = array_values(array_unique(array_filter(array_map('intval', (array) ($o['allowedBatchSizes'] ?? $d['allowedBatchSizes'])), fn ($n) => $n >= 1 && $n <= $hardBatch)));
+        sort($allowed);
+        if (! $allowed) {
+            $allowed = $d['allowedBatchSizes'];
+        }
+        $default = (int) ($o['defaultBatchSize'] ?? $d['defaultBatchSize']);
+        if (! in_array($default, $allowed, true)) {
+            $default = in_array((int) $d['defaultBatchSize'], $allowed, true) ? (int) $d['defaultBatchSize'] : $allowed[count($allowed) - 1];
+        }
+        $concurrency = [];
+        foreach (array_merge($d['providerConcurrency'], is_array($o['providerConcurrency'] ?? null) ? $o['providerConcurrency'] : []) as $k => $v) {
+            $concurrency[(string) $k] = max(1, min((int) $d['hardMaxConcurrency'], (int) $v));
+        }
+
+        return [
+            'defaultBatchSize' => $default,
+            'allowedBatchSizes' => $allowed,
+            'maxDynamicRows' => max(1, min((int) $d['hardMaxDynamicRows'], (int) ($o['maxDynamicRows'] ?? $d['maxDynamicRows']))),
+            'maxBatchesPerTick' => max(1, min(200, (int) ($o['maxBatchesPerTick'] ?? $d['maxBatchesPerTick']))),
+            'throttleMs' => max(0, min(5000, (int) ($o['throttleMs'] ?? $d['throttleMs']))),
+            'providerConcurrency' => $concurrency,
+            'risk' => array_map('intval', array_merge($d['risk'], is_array($o['risk'] ?? null) ? array_intersect_key($o['risk'], $d['risk']) : [])),
+        ];
+    }
+
+    /** @return array{proofMaxBytes: int, maxOpenRequestsPerOrganization: int, suspiciousAmount: int} */
+    public function manualPaymentPolicy(): array
+    {
+        $d = config('smsflow.manual_payments');
+        $o = $this->readRaw('payments.manual');
+        $o = is_array($o) ? array_intersect_key($o, $d) : [];
+        $p = array_map('intval', array_merge($d, $o));
+        $p['proofMaxBytes'] = max(100 * 1024, min(10 * 1024 * 1024, $p['proofMaxBytes']));
+
+        return $p;
+    }
+
     /** @return array{provider: string, url: string, mapping: array<string, string>} */
     public function smsProviderSettings(): array
     {
