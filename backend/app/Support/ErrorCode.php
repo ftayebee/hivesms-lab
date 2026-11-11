@@ -33,6 +33,7 @@ enum ErrorCode: string
     case PROVIDER_ERROR = 'PROVIDER_ERROR';
     case PROVIDER_NOT_CONFIGURED = 'PROVIDER_NOT_CONFIGURED';
     case FEATURE_DISABLED = 'FEATURE_DISABLED';
+    case SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE';
     case INTERNAL_ERROR = 'INTERNAL_ERROR';
 
     public function status(): int
@@ -49,7 +50,7 @@ enum ErrorCode: string
             self::RATE_LIMITED, self::DAILY_LIMIT_EXCEEDED, self::MONTHLY_LIMIT_EXCEEDED => 429,
             self::INSUFFICIENT_BALANCE, self::PAYMENT_FAILED => 402,
             self::PROVIDER_ERROR => 502,
-            self::PROVIDER_NOT_CONFIGURED => 503,
+            self::PROVIDER_NOT_CONFIGURED, self::SERVICE_UNAVAILABLE => 503,
             self::INTERNAL_ERROR => 500,
         };
     }

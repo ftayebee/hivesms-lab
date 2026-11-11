@@ -7,10 +7,12 @@ use App\Support\ErrorCode;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use PDOException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
@@ -56,8 +58,29 @@ class ApiExceptionRenderer
                 $e->getHeaders(),
             ),
             $e instanceof HttpExceptionInterface && $e->getStatusCode() < 500 => ApiResponse::fail(ErrorCode::INVALID_REQUEST, 'The request could not be processed.', $e->getStatusCode()),
+            // Shared hosting refuses new database connections during short bursts. That is a
+            // temporary condition, not a bug: 503 + Retry-After lets clients retry safe requests
+            // (the Next.js client retries GETs automatically; writes are never resent).
+            self::databaseUnavailable($e) => self::withHeaders(
+                ApiResponse::fail(ErrorCode::SERVICE_UNAVAILABLE, 'The service is busy for a moment. Please retry.'),
+                ['Retry-After' => '1'],
+            ),
             default => ApiResponse::fail(ErrorCode::INTERNAL_ERROR, 'Something went wrong on our side. Retry, and contact support if it persists.', 500),
         };
+    }
+
+    /**
+     * Connection-level database failures (refused, dropped or limit reached) — not query errors.
+     * MySQL/MariaDB client codes: 2002 can't connect, 2006 gone away, 2013 lost during query,
+     * 1040 too many connections, 1203 max_user_connections.
+     */
+    public static function databaseUnavailable(Throwable $e): bool
+    {
+        if (! $e instanceof QueryException && ! $e instanceof PDOException) {
+            return false;
+        }
+
+        return (bool) preg_match('/\[(2002|2006|2013|1040|1203)\]|SQLSTATE\[08|Too many connections|max_user_connections|Operation not permitted|Connection refused/i', $e->getMessage());
     }
 
     /** @param array<string, string> $headers */

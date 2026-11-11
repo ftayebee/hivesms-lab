@@ -28,6 +28,8 @@ export const ErrorCodes = {
   PROVIDER_ERROR: 502,
   PROVIDER_NOT_CONFIGURED: 503,
   FEATURE_DISABLED: 403,
+  /** Temporary (e.g. database connection refused under load); safe requests may be retried. */
+  SERVICE_UNAVAILABLE: 503,
   INTERNAL_ERROR: 500,
 } as const;
 

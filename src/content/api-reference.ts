@@ -27,6 +27,7 @@ const descriptions: Record<ErrorCode, string> = {
   PROVIDER_ERROR: "The upstream SMS provider returned an error.",
   PROVIDER_NOT_CONFIGURED: "No SMS provider is configured for this platform.",
   FEATURE_DISABLED: "This feature is not enabled.",
+  SERVICE_UNAVAILABLE: "Temporarily busy. Retry after the Retry-After seconds (with the same Idempotency-Key for sends).",
   INTERNAL_ERROR: "Unexpected server error. Safe to retry with the same Idempotency-Key.",
 };
 
