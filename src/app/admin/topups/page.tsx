@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState, PageHeader } from "@/components/shared/states";
 import { StatusTabs } from "@/components/admin/status-tabs";
 import { requirePlatform } from "@/lib/auth/session";
+import { platformCan } from "@/lib/auth/permissions";
 import { laravelPage } from "@/lib/laravel-api";
 import { laravelEnabled } from "@/lib/laravel/flags";
 import { formatBDT, formatDateTime } from "@/lib/format";
@@ -21,13 +22,16 @@ const STATUSES: TopUpStatus[] = ["pending", "under_review", "approved", "rejecte
 
 export default async function AdminTopUpsPage({ searchParams }: PageProps<"/admin/topups">) {
   if (!laravelEnabled("manualTopups")) notFound();
-  await requirePlatform("admin:topups:review");
+  const session = await requirePlatform("admin:topups:review");
+  // Payment methods are managed (and listed by the API) under admin:settings:manage; staff who only
+  // review requests get the page without the method filter instead of an error.
+  const canListMethods = platformCan(session.user.platformRole, "admin:settings:manage");
   const sp = await searchParams;
   const str = (k: string) => (typeof sp[k] === "string" && sp[k] ? (sp[k] as string) : undefined);
   const status = STATUSES.find((s) => s === sp.status);
   const page = parsePage(sp.page);
   const [{ rows, total, pageSize }, methods] = await laravelPage(() =>
-    Promise.all([adminRequests({ status, from: str("from"), to: str("to"), methodId: str("methodId"), q: str("q"), page }), adminMethods()]),
+    Promise.all([adminRequests({ status, from: str("from"), to: str("to"), methodId: str("methodId"), q: str("q"), page }), canListMethods ? adminMethods() : Promise.resolve([])]),
   );
 
   return (
