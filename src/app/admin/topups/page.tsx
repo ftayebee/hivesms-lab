@@ -43,14 +43,18 @@ export default async function AdminTopUpsPage({ searchParams }: PageProps<"/admi
           <form className="grid gap-3 sm:grid-cols-5" method="get">
             {status && <input type="hidden" name="status" value={status} />}
             <Input name="q" defaultValue={str("q")} placeholder="Customer or transaction ID" aria-label="Search" className="sm:col-span-2" />
-            <NativeSelect name="methodId" defaultValue={str("methodId") ?? ""} aria-label="Payment method">
-              <option value="">All methods</option>
-              {methods.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.displayName}
-                </option>
-              ))}
-            </NativeSelect>
+            {canListMethods ? (
+              <NativeSelect name="methodId" defaultValue={str("methodId") ?? ""} aria-label="Payment method">
+                <option value="">All methods</option>
+                {methods.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.displayName}
+                  </option>
+                ))}
+              </NativeSelect>
+            ) : (
+              <div aria-hidden />
+            )}
             <Input type="date" name="from" defaultValue={str("from")} aria-label="From" />
             <div className="flex gap-2">
               <Input type="date" name="to" defaultValue={str("to")} aria-label="To" />
