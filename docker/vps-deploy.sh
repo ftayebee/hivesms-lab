@@ -82,8 +82,14 @@ grep -q '^MAIL_MAILER=log' .env.docker && echo "NOTE: MAIL_MAILER=log: emails on
 
 # ── Build and start ────────────────────────────────────────────────────────────
 say "Building and starting (first build takes several minutes)"
+# Build first while the old version keeps serving; then swap. The scheduler is stopped explicitly
+# with a short timeout: a long-running schedule:work can otherwise hold the recreate (and with it
+# the new web/api containers) for minutes. Queued SMS simply wait for the new scheduler.
 # shellcheck disable=SC2086
-docker compose --env-file .env.docker $PROFILE up -d --build --remove-orphans
+docker compose --env-file .env.docker $PROFILE build
+docker compose --env-file .env.docker stop -t 20 scheduler 2>/dev/null || true
+# shellcheck disable=SC2086
+docker compose --env-file .env.docker $PROFILE up -d --remove-orphans
 
 say "Waiting for the panel"
 i=0
