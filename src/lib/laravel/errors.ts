@@ -7,7 +7,7 @@ export type LaravelErrorKind =
   | "unauthenticated" // 401: session missing/expired → sign in again
   | "forbidden" // 403: missing permission / no organization / suspended / email not verified
   | "not_found" // 404 (also another organization's id)
-  | "validation" // 422
+  | "validation" // 422, and 400 (INVALID_REQUEST)
   | "conflict" // 409
   | "insufficient_balance" // 402
   | "rate_limited" // 429
@@ -15,6 +15,8 @@ export type LaravelErrorKind =
   | "server"; // 500 and anything unexpected
 
 export const KIND_BY_STATUS: Record<number, LaravelErrorKind> = {
+  // INVALID_REQUEST (e.g. an expired or already used reset link): Laravel's message is for users.
+  400: "validation",
   401: "unauthenticated",
   402: "insufficient_balance",
   403: "forbidden",

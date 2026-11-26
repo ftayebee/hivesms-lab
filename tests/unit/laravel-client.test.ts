@@ -83,6 +83,7 @@ describe("laravelFetch", () => {
   });
 
   it.each([
+    [400, "validation", "INVALID_REQUEST", "This reset link is invalid or has expired. Request a new one."],
     [401, "unauthenticated", "UNAUTHORIZED", "Sign in to continue."],
     [403, "forbidden", "FORBIDDEN", "You do not have permission to perform this action."],
     [404, "not_found", "NOT_FOUND", "Contact not found."],
