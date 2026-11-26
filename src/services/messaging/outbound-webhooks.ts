@@ -67,7 +67,7 @@ export async function deliverPendingWebhooks(limit = 50) {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          "user-agent": "SMSFlow-Webhooks/1.0",
+          "user-agent": "MZSMS-Webhooks/1.0",
           "x-smsflow-event": d.event,
           "x-smsflow-delivery": d.id,
           "x-smsflow-signature": signWebhookPayload(secret, body),

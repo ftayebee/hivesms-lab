@@ -53,7 +53,7 @@ class ReportService
         if (is_string($recipient) && trim($recipient) !== '') {
             $f['to'] = Phone::normalize($recipient) ?? mb_substr(trim($recipient), 0, 30);
         }
-        if (! empty($q['source']) && in_array(strtoupper((string) $q['source']), ['API', 'CAMPAIGN', 'DASHBOARD'], true)) {
+        if (! empty($q['source']) && in_array(strtoupper((string) $q['source']), ['API', 'CAMPAIGN', 'DASHBOARD', 'IMPORT'], true)) {
             $f['source'] = strtoupper((string) $q['source']);
         }
 

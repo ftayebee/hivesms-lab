@@ -142,6 +142,8 @@ export const PLATFORM_PERMISSIONS = {
   "admin:topups:approve": ["SUPER_ADMIN"],
   "admin:sender_catalog:manage": ["SUPER_ADMIN"],
   "admin:messages:resolve": ["SUPER_ADMIN"],
+  // Import SMS delivery reports into a customer's message log; may charge their wallet (docs/24).
+  "admin:reports:import": ["SUPER_ADMIN"],
 } as const satisfies Record<string, PlatformRoleKey[]>;
 
 export type PlatformPermission = keyof typeof PLATFORM_PERMISSIONS;

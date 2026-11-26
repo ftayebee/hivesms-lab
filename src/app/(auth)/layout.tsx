@@ -10,7 +10,7 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
     <I18nProvider locale={locale}>
       <div lang={locale} className="grid min-h-dvh lg:grid-cols-[1fr_minmax(0,34rem)]">
         <main id="main" className="flex flex-col px-4 py-8 sm:px-8">
-          <Link href="/" className="w-fit rounded-md" aria-label="SMSFlow BD home">
+          <Link href="/" className="w-fit rounded-md" aria-label="MZ SMS home">
             <Logo />
           </Link>
           <div className="mx-auto flex w-full max-w-[26rem] flex-1 flex-col justify-center py-10">{children}</div>

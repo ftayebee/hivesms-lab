@@ -94,7 +94,7 @@ class OutboundWebhookService
                 $secret = Crypto::decryptSecret($endpoint->secretEncrypted);
                 $res = Http::withHeaders([
                     'Content-Type' => 'application/json',
-                    'User-Agent' => 'SMSFlow-Webhooks/1.0',
+                    'User-Agent' => 'MZSMS-Webhooks/1.0',
                     'X-SMSFlow-Event' => $d->event,
                     'X-SMSFlow-Delivery' => $d->id,
                     'X-SMSFlow-Signature' => self::sign($secret, $body),

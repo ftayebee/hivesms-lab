@@ -1,5 +1,5 @@
 /**
- * Marketing copy as structured data. Original copy written for SMSFlow BD. Claims are kept
+ * Marketing copy as structured data. Original copy written for MZ SMS. Claims are kept
  * verifiable: anything that depends on the upstream provider, operators or regulators says so.
  * To add Bangla, create a parallel file (marketing.bn.ts) with the same shape.
  */

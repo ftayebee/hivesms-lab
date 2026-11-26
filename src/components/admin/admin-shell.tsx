@@ -33,6 +33,7 @@ import {
   ListChecks,
   CircleHelp,
   SlidersHorizontal,
+  FileUp,
 } from "lucide-react";
 import { Logo } from "@/components/shared/logo";
 import { SheetContent } from "@/components/ui/dialog";
@@ -54,6 +55,7 @@ const NAV: { href: string; label: string; icon: LucideIcon; perm: PlatformPermis
   { href: "/admin/topups", label: "Manual payments", icon: HandCoins, perm: "admin:topups:review", badgeKey: "topups", feature: "manualTopups" },
   { href: "/admin/payment-methods", label: "Payment methods", icon: Banknote, perm: "admin:settings:manage", feature: "manualTopups" },
   { href: "/admin/sender-catalog", label: "Sender catalog", icon: ListChecks, perm: "admin:sender_catalog:manage", feature: "senderCatalog" },
+  { href: "/admin/report-import", label: "Report import", icon: FileUp, perm: "admin:reports:import", feature: "reportImport" },
   { href: "/admin/unconfirmed", label: "Unconfirmed SMS", icon: CircleHelp, perm: "admin:messages:read", badgeKey: "unconfirmed", feature: "adminApi" },
   { href: "/admin/processing", label: "Campaign processing", icon: SlidersHorizontal, perm: "admin:settings:manage", feature: "adminApi" },
   { href: "/admin/finance", label: "Finance", icon: Landmark, perm: "admin:finance:read" },

@@ -9,7 +9,7 @@ import { getSession } from "@/lib/auth/session";
 import { getT } from "@/i18n/server";
 import { pageMetadata } from "@/lib/seo";
 
-export const metadata = pageMetadata({ title: "Create an account", description: "Create an SMSFlow BD account to send SMS in Bangladesh from a dashboard or the API.", path: "/register" });
+export const metadata = pageMetadata({ title: "Create an account", description: "Create an MZ SMS account to send SMS in Bangladesh from a dashboard or the API.", path: "/register" });
 
 export default async function RegisterPage() {
   if (await getSession()) redirect("/dashboard");

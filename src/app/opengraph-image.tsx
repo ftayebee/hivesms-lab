@@ -10,9 +10,8 @@ export default function OgImage() {
     (
       <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 72, background: "#0E1A36", color: "#E7ECF6", fontFamily: "sans-serif" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 14, background: "#1E3FA8", display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 12px", gap: 8 }}>
-            <div style={{ height: 5, width: 32, background: "#fff", borderRadius: 4 }} />
-            <div style={{ height: 5, width: 20, background: "#fff", borderRadius: 4 }} />
+          <div style={{ width: 56, height: 56, borderRadius: 14, background: "#1E3FA8", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: 24, fontWeight: 800, letterSpacing: -1 }}>
+            MZ
           </div>
           <div style={{ fontSize: 34, fontWeight: 700 }}>{siteConfig.name}</div>
         </div>

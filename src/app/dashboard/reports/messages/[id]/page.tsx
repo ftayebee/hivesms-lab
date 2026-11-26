@@ -42,7 +42,7 @@ export default async function MessagePage({ params }: PageProps<"/dashboard/repo
               {[
                 ["Sender", m.senderValue],
                 ["Type", m.smsType === "PROMOTIONAL" ? "Promotional" : "Transactional"],
-                ["Source", m.campaign ? "Campaign" : m.source === "API" ? `API${m.apiKey ? ` (${m.apiKey.name})` : ""}` : "Dashboard"],
+                ["Source", m.campaign ? "Campaign" : m.source === "API" ? `API${m.apiKey ? ` (${m.apiKey.name})` : ""}` : m.source === "IMPORT" ? "Imported report" : "Dashboard"],
                 ["Encoding", m.encoding === "GSM7" ? "GSM-7" : "Unicode"],
                 ["Segments", String(m.segments)],
                 ["Cost", `${formatBDT(m.cost.toString())}${m.refundedAt ? " (refunded)" : ""}`],

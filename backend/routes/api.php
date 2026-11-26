@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\V1\Admin\AdminFinanceController;
 use App\Http\Controllers\Api\V1\Admin\AdminManualPaymentController;
 use App\Http\Controllers\Api\V1\Admin\AdminOperationsController;
 use App\Http\Controllers\Api\V1\Admin\AdminPlatformController;
+use App\Http\Controllers\Api\V1\Admin\AdminReportImportController;
 use App\Http\Controllers\Api\V1\Admin\AdminReviewController;
 use App\Http\Controllers\Api\V1\Admin\AdminSettingsController;
 use App\Http\Controllers\Api\V1\Admin\AdminStaffController;
@@ -445,6 +446,14 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
             Route::post('sender-catalog/sync', [AdminOperationsController::class, 'syncCatalog'])->name('sender-catalog.sync');
             Route::put('sender-catalog/{id}', [AdminOperationsController::class, 'updateCatalog'])->name('sender-catalog.update');
             Route::put('sender-catalog/{id}/assignments', [AdminOperationsController::class, 'assignCatalog'])->name('sender-catalog.assign');
+        });
+
+        // SMS report import into a customer's message log (docs/24). Off unless FEATURE_REPORT_IMPORT=true.
+        Route::prefix('report-imports')->name('report-imports.')->middleware(['feature:report_import', 'platform:admin:reports:import'])->group(function (): void {
+            Route::get('template', [AdminReportImportController::class, 'template'])->name('template');
+            Route::get('/', [AdminReportImportController::class, 'index'])->name('index');
+            Route::post('preview', [AdminReportImportController::class, 'preview'])->name('preview');
+            Route::post('/', [AdminReportImportController::class, 'store'])->name('store');
         });
 
         // Unconfirmed provider outcomes (docs/21 §6).

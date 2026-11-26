@@ -38,7 +38,7 @@ const schema = z.object({
   EMAIL_PROVIDER: z.enum(["console", "http"]).default("console"),
   EMAIL_PROVIDER_URL: z.string().optional().default(""),
   EMAIL_PROVIDER_KEY: z.string().optional().default(""),
-  EMAIL_FROM: z.string().default("SMSFlow BD <no-reply@example.com>"),
+  EMAIL_FROM: z.string().default("MZ SMS <no-reply@example.com>"),
 
   STORAGE_PROVIDER: z.enum(["local", "s3"]).default("local"),
   STORAGE_S3_ENDPOINT: z.string().optional().default(""),

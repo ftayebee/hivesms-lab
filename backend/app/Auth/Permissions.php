@@ -97,6 +97,8 @@ final class Permissions
         'admin:topups:approve' => ['SUPER_ADMIN'],
         // Sender ID catalog of the provider account and assignment to customers (docs/22 §5).
         'admin:sender_catalog:manage' => ['SUPER_ADMIN'],
+        // Import SMS delivery reports into a customer's message log; may charge their wallet (docs/24).
+        'admin:reports:import' => ['SUPER_ADMIN'],
         // Messages whose provider outcome is unconfirmed: resolving one may refund it.
         'admin:messages:resolve' => ['SUPER_ADMIN'],
     ];

@@ -28,7 +28,7 @@ export interface MessageFilters {
   senderValue?: string;
   status?: MessageStatus;
   to?: string;
-  source?: "API" | "CAMPAIGN" | "DASHBOARD";
+  source?: "API" | "CAMPAIGN" | "DASHBOARD" | "IMPORT";
 }
 
 function whereFor(ctx: TenantContext, range: DateRange, f: MessageFilters = {}): Prisma.Sql {

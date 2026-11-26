@@ -55,7 +55,7 @@ class ModelsTest extends TestCase
     public function test_there_is_one_model_per_application_table(): void
     {
         $tables = collect($this->models())->map(fn (string $c) => (new $c)->getTable())->sort()->values()->all();
-        $this->assertCount(45, $tables); // 42 baseline + payment_methods, campaign_uploads, provider_sender_ids
+        $this->assertCount(46, $tables); // 42 baseline + payment_methods, campaign_uploads, provider_sender_ids, report_imports
         $this->assertSame($tables, array_values(array_unique($tables)));
     }
 

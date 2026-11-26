@@ -4,7 +4,7 @@
  */
 export const en = {
   common: {
-    appName: "SMSFlow BD",
+    appName: "MZ SMS",
     save: "Save",
     saveChanges: "Save changes",
     cancel: "Cancel",
@@ -94,7 +94,7 @@ export const en = {
     signingIn: "Signing in...",
     createAccount: "Create account",
     creatingAccount: "Creating account...",
-    noAccount: "New to SMSFlow BD?",
+    noAccount: "New to MZ SMS?",
     haveAccount: "Already have an account?",
     acceptTerms: "I agree to the Terms and Conditions and Privacy Policy, and I will only message people who have agreed to hear from us.",
     forgotTitle: "Reset your password",

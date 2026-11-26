@@ -425,5 +425,5 @@ export function describeMoney(v: { toString(): string }) {
 }
 
 export async function sendAdminTestEmail(admin: AdminContext, to: string) {
-  return sendEmail({ to, subject: "SMSFlow BD test email", text: `Test email sent by ${admin.name}.`, html: `<p>Test email sent by ${admin.name}.</p>`, tag: "admin-test" });
+  return sendEmail({ to, subject: "MZ SMS test email", text: `Test email sent by ${admin.name}.`, html: `<p>Test email sent by ${admin.name}.</p>`, tag: "admin-test" });
 }

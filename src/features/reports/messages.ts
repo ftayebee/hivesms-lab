@@ -18,7 +18,7 @@ export const reportFiltersSchema = z.object({
   sender: z.string().trim().max(20).optional().catch(undefined),
   status: z.enum(["QUEUED", "SUBMITTED", "DELIVERED", "FAILED", "REJECTED", "EXPIRED", "CANCELLED"]).optional().catch(undefined),
   recipient: z.string().trim().max(30).optional().catch(undefined),
-  source: z.enum(["API", "CAMPAIGN", "DASHBOARD"]).optional().catch(undefined),
+  source: z.enum(["API", "CAMPAIGN", "DASHBOARD", "IMPORT"]).optional().catch(undefined),
 });
 
 export function toMessageFilters(f: z.infer<typeof reportFiltersSchema>): MessageFilters {

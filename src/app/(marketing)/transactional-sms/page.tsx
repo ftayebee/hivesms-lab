@@ -23,7 +23,7 @@ const useCases = [
 
 const flow = [
   { icon: AppWindow, title: "Your application", body: "Your backend decides a message is needed." },
-  { icon: KeyRound, title: "SMSFlow API", body: "Authenticated request, validated and priced." },
+  { icon: KeyRound, title: "MZ SMS API", body: "Authenticated request, validated and priced." },
   { icon: Cloud, title: "SMS platform", body: "Queued, charged, dispatched with retries." },
   { icon: Radio, title: "Carrier / provider", body: "Upstream provider routes to the operator." },
   { icon: Smartphone, title: "Customer", body: "Delivered to the handset; report flows back." },

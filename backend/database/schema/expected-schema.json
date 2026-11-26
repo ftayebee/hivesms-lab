@@ -432,7 +432,7 @@
                 "organizationId": "char(36) NOT NULL",
                 "campaignId": "char(36) NULL",
                 "apiKeyId": "char(36) NULL",
-                "source": "enum('api','campaign','dashboard','system') NOT NULL",
+                "source": "enum('api','campaign','dashboard','system','import') NOT NULL",
                 "to": "varchar(191) NOT NULL",
                 "operator": "varchar(191) NULL",
                 "senderValue": "varchar(191) NOT NULL",
@@ -742,6 +742,33 @@
             "indexes": {
                 "PRIMARY": "UNIQUE(key,windowStart)",
                 "rate_limit_buckets_expiresAt_idx": "INDEX(expiresAt)"
+            },
+            "fks": []
+        },
+        "report_imports": {
+            "columns": {
+                "id": "char(36) NOT NULL",
+                "organizationId": "char(36) NOT NULL",
+                "createdById": "char(36) NULL",
+                "fileName": "varchar(160) NOT NULL",
+                "fileSha256": "char(64) NOT NULL",
+                "rowCount": "int NOT NULL",
+                "importedCount": "int NOT NULL",
+                "skippedCount": "int NOT NULL",
+                "segments": "int NOT NULL",
+                "totalCost": "decimal(14,4) NOT NULL",
+                "charged": "tinyint NOT NULL",
+                "walletTransactionId": "char(36) NULL",
+                "firstSentAt": "datetime(3) NULL",
+                "lastSentAt": "datetime(3) NULL",
+                "note": "varchar(500) NULL",
+                "createdAt": "datetime(3) NOT NULL",
+                "updatedAt": "datetime(3) NOT NULL"
+            },
+            "indexes": {
+                "PRIMARY": "UNIQUE(id)",
+                "report_imports_createdAt_idx": "INDEX(createdAt)",
+                "report_imports_organizationId_fileSha256_key": "UNIQUE(organizationId,fileSha256)"
             },
             "fks": []
         },

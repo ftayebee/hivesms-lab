@@ -5,7 +5,7 @@ import { siteConfig } from "@/config/site";
 
 export const metadata = pageMetadata({
   title: "About us",
-  description: "SMSFlow BD is an SMS communication platform for businesses and developers in Bangladesh, built around transparency, reliability and responsible messaging.",
+  description: "MZ SMS is an SMS communication platform for businesses and developers in Bangladesh, built around transparency, reliability and responsible messaging.",
   path: "/about",
 });
 

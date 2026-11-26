@@ -8,7 +8,7 @@ import { getSession } from "@/lib/auth/session";
 import { getT } from "@/i18n/server";
 import { pageMetadata } from "@/lib/seo";
 
-export const metadata = pageMetadata({ title: "Log in", description: "Sign in to your SMSFlow BD account.", path: "/login" });
+export const metadata = pageMetadata({ title: "Log in", description: "Sign in to your MZ SMS account.", path: "/login" });
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const sp = await searchParams;

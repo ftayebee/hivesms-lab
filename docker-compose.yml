@@ -92,7 +92,7 @@ services:
     restart: unless-stopped
     environment:
       LARAVEL_API_URL: http://api/api/v1
-      LARAVEL_FEATURES: all
+      LARAVEL_FEATURES: ${LARAVEL_FEATURES:-all}
       WORKER_IN_PROCESS: "false"
       # Required by the app's settings check. With every feature on Laravel the panel doesn't query it.
       DATABASE_URL: mysql://${DB_USERNAME:-smsflow}:${DB_PASSWORD:?set DB_PASSWORD}@db:3306/${DB_DATABASE:-smsflow}

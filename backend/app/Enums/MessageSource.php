@@ -9,4 +9,6 @@ enum MessageSource: string
     case CAMPAIGN = 'CAMPAIGN';
     case DASHBOARD = 'DASHBOARD';
     case SYSTEM = 'SYSTEM';
+    /** Imported by staff from an external delivery report (docs/24); never sent by this platform. */
+    case IMPORT = 'IMPORT';
 }

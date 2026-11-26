@@ -43,7 +43,7 @@ export function SiteHeader() {
         )}
       >
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-6 px-4 sm:px-6 lg:px-8">
-          <Link href="/" className="shrink-0 rounded-md" aria-label="SMSFlow BD home">
+          <Link href="/" className="shrink-0 rounded-md" aria-label="MZ SMS home">
             <Logo />
           </Link>
 

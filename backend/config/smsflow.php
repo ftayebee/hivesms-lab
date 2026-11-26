@@ -37,6 +37,8 @@ return [
         'dynamic_sms' => env('FEATURE_DYNAMIC_SMS', false),
         'manual_topups' => env('FEATURE_MANUAL_TOPUPS', false),
         'sender_catalog' => env('FEATURE_SENDER_CATALOG', false),
+        // Super admins import SMS delivery reports (CSV) into a customer's message log (docs/24).
+        'report_import' => env('FEATURE_REPORT_IMPORT', false),
     ],
 
     'sessions' => [
@@ -165,8 +167,8 @@ return [
     ],
 
     'site' => [
-        'name' => env('APP_NAME', 'SMSFlow BD'),
-        'legal_name' => env('SITE_LEGAL_NAME', 'SMSFlow BD (operating company name - configure)'),
+        'name' => env('APP_NAME', 'MZ SMS'),
+        'legal_name' => env('SITE_LEGAL_NAME', 'MZ SMS (operating company name - configure)'),
         'address' => env('SITE_ADDRESS', 'Company address, Dhaka, Bangladesh (configure)'),
         'support_email' => env('SITE_SUPPORT_EMAIL', 'support@example.com'),
         'sales_email' => env('SITE_SALES_EMAIL', 'sales@example.com'),

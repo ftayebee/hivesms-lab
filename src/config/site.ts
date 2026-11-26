@@ -7,9 +7,9 @@
  * placeholder values as if they were real.
  */
 export const siteConfig = {
-  name: "SMSFlow BD",
-  shortName: "SMSFlow",
-  legalName: "SMSFlow BD (operating company name - configure)",
+  name: "MZ SMS",
+  shortName: "MZ SMS",
+  legalName: "MZ SMS (operating company name - configure)",
   tagline: "SMS infrastructure for businesses in Bangladesh",
   description:
     "Send bulk, transactional and promotional SMS in Bangladesh through a campaign dashboard or a REST API, with delivery reports, BDT billing and team controls.",

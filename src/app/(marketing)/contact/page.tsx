@@ -9,7 +9,7 @@ import { breadcrumbJsonLd, pageMetadata } from "@/lib/seo";
 
 export const metadata = pageMetadata({
   title: "Contact sales and support",
-  description: "Contact the SMSFlow BD team about pricing, sender IDs, API integration or support.",
+  description: "Contact the MZ SMS team about pricing, sender IDs, API integration or support.",
   path: "/contact",
 });
 

@@ -201,7 +201,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/dashboar
                             {m.campaign.name}
                           </Link>
                         ) : (
-                          <Badge tone="outline">{m.source === "API" ? "API" : "Dashboard"}</Badge>
+                          <Badge tone="outline">{m.source === "API" ? "API" : m.source === "IMPORT" ? "Imported" : "Dashboard"}</Badge>
                         )}
                       </td>
                       <td className="px-4 py-2.5 font-mono text-xs">{m.senderValue}</td>

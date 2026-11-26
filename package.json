@@ -7,6 +7,7 @@
     "build": "prisma generate && next build --webpack",
     "build:deploy": "prisma generate && prisma migrate deploy && next build --webpack",
     "start": "node scripts/start-standalone.mjs",
+    "package:cpanel": "node scripts/package-standalone.mjs",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "worker": "node --conditions=react-server --import tsx scripts/worker.ts",

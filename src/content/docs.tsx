@@ -29,13 +29,13 @@ export interface DocPage {
 const BASE = siteConfig.apiBaseUrl;
 
 const listMessagesSamples: CodeSample[] = [
-  { label: "cURL", language: "bash", code: `curl "${BASE}/messages?status=failed&from=2026-09-01&limit=50" \\\n  -H "Authorization: Bearer $SMSFLOW_API_KEY"` },
+  { label: "cURL", language: "bash", code: `curl "${BASE}/messages?status=failed&from=2026-09-01&limit=50" \\\n  -H "Authorization: Bearer $MZSMS_API_KEY"` },
 ];
 const estimateSamples: CodeSample[] = [
   {
     label: "cURL",
     language: "bash",
-    code: `curl -X POST ${BASE}/sms/estimate \\\n  -H "Authorization: Bearer $SMSFLOW_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "message": "প্রিয় গ্রাহক, আপনার অর্ডারটি আজ ডেলিভারি হবে।", "recipients": 250, "type": "promotional" }'`,
+    code: `curl -X POST ${BASE}/sms/estimate \\\n  -H "Authorization: Bearer $MZSMS_API_KEY" \\\n  -H "Content-Type: application/json" \\\n  -d '{ "message": "প্রিয় গ্রাহক, আপনার অর্ডারটি আজ ডেলিভারি হবে।", "recipients": 250, "type": "promotional" }'`,
   },
   {
     label: "Response",
@@ -57,7 +57,7 @@ const estimateSamples: CodeSample[] = [
   },
 ];
 const senderIdSamples: CodeSample[] = [
-  { label: "cURL", language: "bash", code: `curl ${BASE}/sender-ids -H "Authorization: Bearer $SMSFLOW_API_KEY"` },
+  { label: "cURL", language: "bash", code: `curl ${BASE}/sender-ids -H "Authorization: Bearer $MZSMS_API_KEY"` },
   {
     label: "Response",
     language: "json",
@@ -76,7 +76,7 @@ export const docPages: DocPage[] = [
   {
     slug: "",
     title: "Introduction",
-    description: "Overview of the SMSFlow BD API: what you can do, base URL, conventions and environments.",
+    description: "Overview of the MZ SMS API: what you can do, base URL, conventions and environments.",
     group: "Getting started",
     toc: [
       { id: "what", title: "What you can build" },
@@ -137,7 +137,7 @@ export const docPages: DocPage[] = [
         </p>
         <H2 id="key">2. Create an API key</H2>
         <p>
-          Go to Dashboard → API → Create key. Select the <code>sms:send</code> and <code>messages:read</code> scopes. Copy the key immediately: it is shown only once. Store it as an environment variable, for example <code>SMSFLOW_API_KEY</code>.
+          Go to Dashboard → API → Create key. Select the <code>sms:send</code> and <code>messages:read</code> scopes. Copy the key immediately: it is shown only once. Store it as an environment variable, for example <code>MZSMS_API_KEY</code>.
         </p>
         <Callout tone="warning" title="Keep keys on your server">
           Never embed an API key in a mobile app, browser JavaScript or a public repository. Anyone with the key can send messages billed to your account.
@@ -620,7 +620,7 @@ export const docPages: DocPage[] = [
   {
     slug: "changelog",
     title: "Changelog",
-    description: "Changes to the SMSFlow BD API.",
+    description: "Changes to the MZ SMS API.",
     group: "Reference",
     toc: [{ id: "v1", title: "v1.0.0" }],
     Content: () => (

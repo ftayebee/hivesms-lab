@@ -8,7 +8,7 @@ export const sendSmsSamples: CodeSample[] = [
     label: "cURL",
     language: "bash",
     code: `curl -X POST ${BASE}/sms/send \\
-  -H "Authorization: Bearer $SMSFLOW_API_KEY" \\
+  -H "Authorization: Bearer $MZSMS_API_KEY" \\
   -H "Content-Type: application/json" \\
   -H "Idempotency-Key: order-10234-otp" \\
   -d '{
@@ -25,7 +25,7 @@ export const sendSmsSamples: CodeSample[] = [
 const res = await fetch("${BASE}/sms/send", {
   method: "POST",
   headers: {
-    "Authorization": \`Bearer \${process.env.SMSFLOW_API_KEY}\`,
+    "Authorization": \`Bearer \${process.env.MZSMS_API_KEY}\`,
     "Content-Type": "application/json",
     "Idempotency-Key": "order-10234-otp",
   },
@@ -56,7 +56,7 @@ curl_setopt_array($ch, [
     CURLOPT_POST => true,
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_HTTPHEADER => [
-        "Authorization: Bearer " . getenv("SMSFLOW_API_KEY"),
+        "Authorization: Bearer " . getenv("MZSMS_API_KEY"),
         "Content-Type: application/json",
         "Idempotency-Key: order-10234-otp",
     ],
@@ -79,7 +79,7 @@ import requests
 res = requests.post(
     "${BASE}/sms/send",
     headers={
-        "Authorization": f"Bearer {os.environ['SMSFLOW_API_KEY']}",
+        "Authorization": f"Bearer {os.environ['MZSMS_API_KEY']}",
         "Idempotency-Key": "order-10234-otp",
     },
     json={
@@ -145,7 +145,7 @@ export const bulkSmsSamples: CodeSample[] = [
     label: "cURL",
     language: "bash",
     code: `curl -X POST ${BASE}/sms/bulk \\
-  -H "Authorization: Bearer $SMSFLOW_API_KEY" \\
+  -H "Authorization: Bearer $MZSMS_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
     "sender_id": "YOURBRAND",
@@ -183,7 +183,7 @@ export const statusSamples: CodeSample[] = [
     label: "cURL",
     language: "bash",
     code: `curl ${BASE}/messages/5b0f2c7e-7a55-4b1e-9d0a-3c1d2e4f6a70 \\
-  -H "Authorization: Bearer $SMSFLOW_API_KEY"`,
+  -H "Authorization: Bearer $MZSMS_API_KEY"`,
   },
   {
     label: "Response",
@@ -216,7 +216,7 @@ export const balanceSamples: CodeSample[] = [
   {
     label: "cURL",
     language: "bash",
-    code: `curl ${BASE}/balance -H "Authorization: Bearer $SMSFLOW_API_KEY"`,
+    code: `curl ${BASE}/balance -H "Authorization: Bearer $MZSMS_API_KEY"`,
   },
   {
     label: "Response",
@@ -247,7 +247,7 @@ app.post("/webhooks/sms", express.raw({ type: "application/json" }), (req, res) 
   const header = req.get("X-SMSFlow-Signature") ?? ""; // "t=1727683200,v1=5d41..."
   const { t, v1 } = Object.fromEntries(header.split(",").map((p) => p.split("=")));
   const expected = crypto
-    .createHmac("sha256", process.env.SMSFLOW_WEBHOOK_SECRET)
+    .createHmac("sha256", process.env.MZSMS_WEBHOOK_SECRET)
     .update(\`\${t}.\${req.body}\`)
     .digest("hex");
   const fresh = Math.abs(Date.now() / 1000 - Number(t)) < 300;
@@ -265,7 +265,7 @@ app.post("/webhooks/sms", express.raw({ type: "application/json" }), (req, res) 
     code: `<?php
 $raw = file_get_contents("php://input");
 parse_str(str_replace(",", "&", $_SERVER["HTTP_X_SMSFLOW_SIGNATURE"] ?? ""), $sig);
-$expected = hash_hmac("sha256", $sig["t"] . "." . $raw, getenv("SMSFLOW_WEBHOOK_SECRET"));
+$expected = hash_hmac("sha256", $sig["t"] . "." . $raw, getenv("MZSMS_WEBHOOK_SECRET"));
 
 if (abs(time() - (int) $sig["t"]) > 300 || !hash_equals($expected, $sig["v1"] ?? "")) {
     http_response_code(400);
@@ -282,7 +282,7 @@ http_response_code(200);`,
 def verify(raw_body: bytes, header: str) -> bool:
     parts = dict(p.split("=", 1) for p in header.split(","))
     expected = hmac.new(
-        os.environ["SMSFLOW_WEBHOOK_SECRET"].encode(),
+        os.environ["MZSMS_WEBHOOK_SECRET"].encode(),
         f"{parts['t']}.".encode() + raw_body,
         hashlib.sha256,
     ).hexdigest()

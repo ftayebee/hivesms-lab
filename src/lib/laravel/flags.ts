@@ -37,11 +37,12 @@ export const LARAVEL_FEATURES = [
 /**
  * Laravel-only modules added after the cutover (docs/23). They have no Prisma implementation and
  * are NOT switched on by `all`: each must be named explicitly, e.g.
- *   LARAVEL_FEATURES=all,dynamicSms,manualTopups,senderCatalog
- * The matching backend switches (FEATURE_DYNAMIC_SMS, FEATURE_MANUAL_TOPUPS, FEATURE_SENDER_CATALOG)
+ *   LARAVEL_FEATURES=all,dynamicSms,manualTopups,senderCatalog,reportImport
+ * The matching backend switches (FEATURE_DYNAMIC_SMS, FEATURE_MANUAL_TOPUPS, FEATURE_SENDER_CATALOG,
+ * FEATURE_REPORT_IMPORT)
  * must be on as well, or the API answers FEATURE_DISABLED.
  */
-export const OPT_IN_FEATURES = ["dynamicSms", "manualTopups", "senderCatalog"] as const;
+export const OPT_IN_FEATURES = ["dynamicSms", "manualTopups", "senderCatalog", "reportImport"] as const;
 
 export type OptInFeature = (typeof OPT_IN_FEATURES)[number];
 export type LaravelFeature = (typeof LARAVEL_FEATURES)[number] | OptInFeature;

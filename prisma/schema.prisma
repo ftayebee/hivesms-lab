@@ -96,6 +96,7 @@ enum MessageSource {
   CAMPAIGN
   DASHBOARD
   SYSTEM
+  IMPORT // imported by staff from an external delivery report (Laravel migration 2026_11_26_000001)
 }
 
 enum MessageEventSource {
