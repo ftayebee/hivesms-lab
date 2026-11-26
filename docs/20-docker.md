@@ -45,6 +45,62 @@ It installs Docker if needed, creates `.env.docker` with new secrets (optional m
 To update later: `git pull && sh docker/vps-deploy.sh sms.example.com` (it keeps `.env.docker`).
 Then set SMS and email in `.env.docker` (see *Go live*) and run the script again.
 
+### Behind an existing web server
+
+When another site on the same VPS already serves ports 80/443, run this stack without Caddy:
+
+```bash
+sh docker/vps-deploy.sh sms.example.com --behind-proxy
+```
+
+The panel then listens only on `127.0.0.1:3100` (change with `WEB_PORT=… WEB_BIND=…` before the
+command). It is a separate Compose project (`smsflow`) with its own network, database and volumes,
+so it does not touch the other site's containers. The existing web server forwards the domain to
+it and handles HTTPS. Find out what that server is:
+
+```bash
+docker ps --format 'table {{.Names}}\t{{.Image}}\t{{.Ports}}'; ss -tlnp | grep -E ':(80|443) '
+```
+
+| Who owns 80/443 | What to do |
+|---|---|
+| **nginx on the host** (`nginx` process in `ss`) | add the server block below, then `certbot --nginx -d sms.example.com` |
+| **Nginx Proxy Manager** (image `jc21/nginx-proxy-manager`) | rerun with `WEB_BIND=172.17.0.1`; add a Proxy Host: domain `sms.example.com`, scheme `http`, forward host `172.17.0.1`, port `3100`, *Websockets* on; SSL tab → request a Let's Encrypt certificate, *Force SSL* |
+| **nginx / Caddy in a container** | rerun with `WEB_BIND=172.17.0.1`; proxy `sms.example.com` to `http://172.17.0.1:3100` in its config with the same headers as below, issue a certificate the way that setup does for its other site, reload it |
+| **Traefik** (image `traefik`) | rerun with `WEB_BIND=172.17.0.1`; add a file-provider router for `Host(\`sms.example.com\`)` with its certresolver, pointing to the service URL `http://172.17.0.1:3100` |
+
+`172.17.0.1` is Docker's host address as seen from containers (check with
+`ip -4 addr show docker0`). It is not reachable from the internet, unlike `0.0.0.0`; never bind
+the panel to `0.0.0.0`. If a firewall (ufw) is active, allow it from Docker:
+`ufw allow from 172.16.0.0/12 to any port 3100 proto tcp`.
+
+nginx on the host (`/etc/nginx/sites-available/sms.example.com`, then
+`ln -s ../sites-available/sms.example.com /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx`):
+
+```nginx
+server {
+    listen 80;
+    server_name sms.example.com;
+    client_max_body_size 16m;          # CSV imports and documents (app limit 10–15 MB)
+
+    location / {
+        proxy_pass http://127.0.0.1:3100;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $remote_addr;   # the app takes the first entry as the client IP
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 300s;           # large imports
+    }
+}
+```
+
+`certbot --nginx -d sms.example.com` then adds HTTPS and the redirect. Whatever the proxy, it
+must allow uploads of at least 16 MB, pass `Host` and `X-Forwarded-For`, and serve the site over
+HTTPS: sign-in does not work over plain HTTP.
+
 ## Create the first admin
 
 Register nothing for this: the command creates the account, and prints a single-use link for setting
