@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Admin;
 
 use App\Http\Controllers\Api\V1\ApiController;
+use App\Http\Requests\Admin\CreateCustomerRequest;
 use App\Http\Requests\Admin\OrgControlsRequest;
 use App\Http\Resources\ApiKeyResource;
 use App\Http\Resources\AuditLogResource;
@@ -15,6 +16,7 @@ use App\Http\Resources\TransactionResource;
 use App\Models\Organization;
 use App\Models\Wallet;
 use App\Services\Admin\AdminService;
+use App\Services\Admin\CustomerAccountService;
 use App\Support\Dhaka;
 use App\Support\Money;
 use Illuminate\Http\JsonResponse;
@@ -98,6 +100,14 @@ class AdminCustomerController extends ApiController
         $this->admin->setOrganizationStatus($this->admin($request), $id, $data['status'], isset($data['reason']) ? trim($data['reason']) ?: null : null);
 
         return $this->ok(['id' => $id, 'status' => $data['status']]);
+    }
+
+    /** POST /admin/customers (admin:customers:create): opens a customer account with a password chosen by the admin. */
+    public function store(CreateCustomerRequest $request, CustomerAccountService $accounts): JsonResponse
+    {
+        $r = $accounts->create($this->admin($request), $request->payload());
+
+        return $this->ok($r + ['message' => 'Customer account created. They can sign in with the email and password you set.'], 201);
     }
 
     /** GET /admin/wallets?page=: wallets by balance, platform total, number below their alert threshold. */

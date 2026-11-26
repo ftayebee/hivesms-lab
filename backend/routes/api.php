@@ -347,6 +347,8 @@ Route::prefix('v1')->name('v1.')->group(function (): void {
             Route::put('customers/{id}/pricing', [AdminCustomerPricingController::class, 'update'])->name('customers.pricing.update');
             Route::post('customers/{id}/pricing/reset', [AdminCustomerPricingController::class, 'reset'])->name('customers.pricing.reset');
         });
+        // Opening a customer account with a password: SUPER_ADMIN only.
+        Route::post('customers', [AdminCustomerController::class, 'store'])->middleware('platform:admin:customers:create')->name('customers.store');
         // Money-moving: SUPER_ADMIN only, password re-confirmation and idempotency key (AdminFinanceController).
         Route::post('customers/{id}/wallet-adjustments', [AdminFinanceController::class, 'adjustWallet'])->middleware('platform:admin:wallet:adjust')->name('customers.wallet');
         Route::post('users/{id}/password-reset', [AdminStaffController::class, 'sendPasswordReset'])->middleware('platform:admin:customers:manage')->name('users.password-reset');

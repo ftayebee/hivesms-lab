@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Building2, Search } from "lucide-react";
+import { Building2, Search, UserPlus } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { StatusBadge } from "@/components/ui/badge";
 import { Input, NativeSelect } from "@/components/ui/input";
@@ -31,7 +31,19 @@ export default async function AdminCustomersPage({ searchParams }: PageProps<"/a
   const { rows, total } = await laravelPage(() => listOrganizations({ q: q || undefined, status, planId, from, to, review, page }));
   return (
     <>
-      <PageHeader title="Customers" description={`${formatNumber(total)} organizations`} />
+      <PageHeader
+        title="Customers"
+        description={`${formatNumber(total)} organizations`}
+        actions={
+          platformCan(session.user.platformRole, "admin:customers:create") ? (
+            <Button asChild>
+              <Link href="/admin/customers/new">
+                <UserPlus /> New customer
+              </Link>
+            </Button>
+          ) : undefined
+        }
+      />
       <Card>
         <form method="get" className="flex flex-col gap-3 border-b border-border p-4 sm:flex-row" role="search">
           <div className="relative flex-1">

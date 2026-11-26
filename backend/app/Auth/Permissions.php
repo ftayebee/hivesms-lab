@@ -72,6 +72,8 @@ final class Permissions
         'admin:access' => ['SUPPORT', 'ADMIN', 'SUPER_ADMIN'],
         'admin:customers:read' => ['SUPPORT', 'ADMIN', 'SUPER_ADMIN'],
         'admin:customers:manage' => ['ADMIN', 'SUPER_ADMIN'],
+        // Open a customer account with a password chosen by staff.
+        'admin:customers:create' => ['SUPER_ADMIN'],
         'admin:messages:read' => ['SUPPORT', 'ADMIN', 'SUPER_ADMIN'],
         'admin:sender_ids:review' => ['ADMIN', 'SUPER_ADMIN'],
         'admin:campaigns:review' => ['SUPPORT', 'ADMIN', 'SUPER_ADMIN'],
